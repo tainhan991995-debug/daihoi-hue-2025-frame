@@ -20,9 +20,9 @@ const CONFIG = {
   NAME_MAX_WIDTH: 1750,
 
   WARD_X: 1480,
-WARD_Y: 3280,
-WARD_WIDTH: 1850,        // <== CHUẨN BẠN YÊU CẦU
-WARD_LINE_HEIGHT: 95,   // <== CHIỀU CAO MỖI DÒNG
+  WARD_Y: 3280,
+  WARD_WIDTH: 1850,
+  WARD_LINE_HEIGHT: 95,
 
   TEXT_X: 2950,
   TEXT_Y: 2030,
@@ -33,13 +33,13 @@ WARD_LINE_HEIGHT: 95,   // <== CHIỀU CAO MỖI DÒNG
 export default function Page() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [roleUnit, setRoleUnit] = useState(""); // 💥 chỉ 1 ô: Chức vụ - Đơn vị
+  const [roleUnit, setRoleUnit] = useState("");
   const [message, setMessage] = useState("");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // HANDLE IMAGE UPLOAD
-  const handleImageChange = (e: any) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
 
@@ -48,9 +48,7 @@ export default function Page() {
     reader.readAsDataURL(f);
   };
 
-  // ==============================================
-  // 🔥 USE EFFECT — VẼ CANVAS SAU KHI FONT ĐÃ LOAD
-  // ==============================================
+  // DRAW CANVAS
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -80,25 +78,7 @@ export default function Page() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(frame, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
 
-        if (selectedImage) {
-          const avatar = new Image();
-          avatar.src = selectedImage;
-
-          avatar.onload = () => {
-            if (cancelled) return;
-            drawAvatar(ctx, avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE);
-
-            // 💥 CHỈ TRUYỀN 1 Ô: roleUnit
-            drawTexts(ctx, name, roleUnit, message, CONFIG);
-
-            drawWatermark(
-              ctx,
-              "ĐẠI HỘI ĐOÀN TNCS HỒ CHÍ MINH TP HUẾ 2025",
-              7350,
-              3920
-            );
-          };
-        } else {
+        const drawContent = () => {
           drawTexts(ctx, name, roleUnit, message, CONFIG);
 
           drawWatermark(
@@ -107,6 +87,19 @@ export default function Page() {
             7350,
             3920
           );
+        };
+
+        if (selectedImage) {
+          const avatar = new Image();
+          avatar.src = selectedImage;
+
+          avatar.onload = () => {
+            if (cancelled) return;
+            drawAvatar(ctx, avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE);
+            drawContent();
+          };
+        } else {
+          drawContent();
         }
       };
     };
@@ -156,9 +149,12 @@ export default function Page() {
             />
           </div>
 
-          <Input label="Họ và tên" maxLength={50} onChange={(e) => setName(e.target.value)} />
+          <Input
+            label="Họ và tên"
+            maxLength={50}
+            onChange={(e) => setName(e.target.value)}
+          />
 
-          {/* 💥 CHỈ 1 Ô: CHỨC VỤ - ĐƠN VỊ */}
           <Input
             label="Chức vụ - Đơn vị"
             maxLength={500}
@@ -173,7 +169,9 @@ export default function Page() {
               maxLength={500}
               className="border rounded-xl px-4 py-3 w-full mt-1 resize-none focus:ring-2 focus:ring-blue-500 outline-none"
               placeholder="Nhập lời nhắn…"
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setMessage(e.target.value)
+              }
             />
             <div className="text-right text-xs text-slate-500">{message.length}/500</div>
           </div>
@@ -207,7 +205,15 @@ export default function Page() {
 }
 
 /* INPUT COMPONENT */
-function Input({ label, maxLength, onChange }: any) {
+function Input({
+  label,
+  maxLength,
+  onChange,
+}: {
+  label: string;
+  maxLength: number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
   return (
     <div className="space-y-1">
       <label className="text-sm font-medium text-slate-700">{label}</label>
