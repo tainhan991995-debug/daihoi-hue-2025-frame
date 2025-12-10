@@ -239,310 +239,172 @@ export default function Page() {
 }
 
 /* ======================================================
-   ======================= CROP MODAL ====================
-   ========== Square crop fixed, centered on viewport =====
-   ====================================================== */
+  function CropModal({ imageUrl, onClose, onUse }: any) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
-function CropModal({ imageUrl, onClose, onUse }: any) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null); // drawing image
-  const overlayRef = useRef<HTMLCanvasElement | null>(null); // overlay + crop box visuals
+  const [bmp, setBmp] = useState<ImageBitmap | null>(null);
 
-  const [imgBitmap, setImgBitmap] = useState<ImageBitmap | null>(null);
-
-  // Square crop box state (position and size in overlay coords)
-  const [box, setBox] = useState<{ x: number; y: number; size: number }>({
+  // Box crop hình vuông
+  const [box, setBox] = useState({
     x: 0,
     y: 0,
     size: 200,
   });
 
-  const dragging = useRef<{ mode: "move" | "resize" | null; startX: number; startY: number; startBox: any }>({
-    mode: null,
+  const dragging = useRef({
+    mode: null as "move" | "resize" | null,
     startX: 0,
     startY: 0,
-    startBox: null,
+    boxStart: { x: 0, y: 0, size: 200 },
   });
 
-  // When opening modal: load bitmap, initialize box centered, and small on mobile
+  /* LOAD IMAGE */
   useEffect(() => {
-    let cancelled = false;
     (async () => {
-      try {
-        const resp = await fetch(imageUrl);
-        const blob = await resp.blob();
-
-        // createImageBitmap is performant and tends to respect orientation better in modern browsers
-        const bitmap = await createImageBitmap(blob);
-        if (!cancelled) setImgBitmap(bitmap);
-      } catch (err) {
-        console.error("Load image error:", err);
-      }
+      const blob = await (await fetch(imageUrl)).blob();
+      const bitmap = await createImageBitmap(blob);
+      setBmp(bitmap);
     })();
-
-    return () => {
-      cancelled = true;
-      setImgBitmap(null);
-    };
   }, [imageUrl]);
 
-  // Draw image scaled into canvas & overlay, set initial centered square
+  /* DRAW IMAGE + OVERLAY */
   const drawAll = () => {
     const cv = canvasRef.current;
-    const ov = overlayRef.current;
-    const bmp = imgBitmap;
-    if (!cv || !ov || !bmp) return;
+    const ctx = cv?.getContext("2d");
 
-    // set physical size to match CSS layout
+    if (!cv || !ctx || !bmp) return;
+
     cv.width = cv.clientWidth;
     cv.height = cv.clientHeight;
-    ov.width = ov.clientWidth;
-    ov.height = ov.clientHeight;
 
-    const ctx = cv.getContext("2d")!;
     ctx.clearRect(0, 0, cv.width, cv.height);
 
-    // Fit image into the canvas (contain)
     const scale = Math.min(cv.width / bmp.width, cv.height / bmp.height);
     const drawW = bmp.width * scale;
     const drawH = bmp.height * scale;
     const dx = (cv.width - drawW) / 2;
     const dy = (cv.height - drawH) / 2;
 
-    // store pos for crop calculations
     (ctx as any).pos = { dx, dy, drawW, drawH, scale };
 
     ctx.drawImage(bmp, dx, dy, drawW, drawH);
 
-    // If box is default 0 -> init center box
-    if (box.size === 0 || (box.x === 0 && box.y === 0 && box.size === 200)) {
-      // size should be a fraction of the smaller side
-      const maxSide = Math.min(cv.width, cv.height);
-      const targetSize = Math.floor(maxSide * (window.innerWidth < 768 ? 0.45 : 0.55));
+    // Auto-center crop box once
+    if (box.size < 10) {
+      const s = Math.min(cv.width, cv.height) * 0.45;
       setBox({
-        x: Math.floor((cv.width - targetSize) / 2),
-        y: Math.floor((cv.height - targetSize) / 2),
-        size: targetSize,
+        x: (cv.width - s) / 2,
+        y: (cv.height - s) / 2,
+        size: s,
       });
     }
-
-    drawOverlay();
   };
 
-  const drawOverlay = () => {
-    const ov = overlayRef.current;
-    const cv = canvasRef.current;
-    const bmp = imgBitmap;
-    if (!ov || !cv || !bmp) return;
+  useEffect(() => drawAll(), [bmp, box]);
 
-    const ctx = ov.getContext("2d")!;
-    ov.width = ov.clientWidth;
-    ov.height = ov.clientHeight;
-    ctx.clearRect(0, 0, ov.width, ov.height);
+  /* TOUCH HANDLERS – FULL MOBILE SUPPORT */
+  const onTouchStart = (e: TouchEvent) => {
+    if (!overlayRef.current) return;
 
-    // darken whole area
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, 0, ov.width, ov.height);
-
-    // clear crop square
-    ctx.clearRect(box.x, box.y, box.size, box.size);
-
-    // stroke
-    ctx.strokeStyle = "#3b82f6";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(box.x + 1.5, box.y + 1.5, box.size - 3, box.size - 3);
-  };
-
-  // redraw when bitmap or box changes or on resize
-  useEffect(() => {
-    drawAll();
-    // re-draw on window resize (keeps box centered)
-    const onResize = () => {
-      // small debounce-ish
-      setTimeout(() => {
-        drawAll();
-      }, 50);
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imgBitmap, box.x, box.y, box.size]);
-
-  /* ===== pointer / touch handling (supports mouse & touch via pointer events) ===== */
-  const startPointer = (clientX: number, clientY: number) => {
-    const ov = overlayRef.current!;
-    const rect = ov.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    // decide mode: near bottom-right corner -> resize, inside box -> move, else none
-    const nearCorner = Math.hypot(x - (box.x + box.size), y - (box.y + box.size)) < 28;
-    const inside = x > box.x && x < box.x + box.size && y > box.y && y < box.y + box.size;
-
-    if (nearCorner) dragging.current.mode = "resize";
-    else if (inside) dragging.current.mode = "move";
-    else dragging.current.mode = null;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const t = e.touches[0];
+    const x = t.clientX - rect.left;
+    const y = t.clientY - rect.top;
 
     dragging.current.startX = x;
     dragging.current.startY = y;
-    dragging.current.startBox = { ...box };
+    dragging.current.boxStart = { ...box };
+
+    // near bottom-right corner → resize
+    if (Math.abs(x - (box.x + box.size)) < 30 &&
+        Math.abs(y - (box.y + box.size)) < 30) {
+      dragging.current.mode = "resize";
+    }
+    // inside box → move
+    else if (x > box.x && x < box.x + box.size && y > box.y && y < box.y + box.size) {
+      dragging.current.mode = "move";
+    } else {
+      dragging.current.mode = null;
+    }
+
+    e.preventDefault();
   };
 
-  const onPointerDown = (e: any) => {
-    // support touch events (touches[0]) and pointer events
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    startPointer(clientX, clientY);
-    // prevent default to avoid page scroll on touch
-    e.preventDefault?.();
-  };
+  const onTouchMove = (e: TouchEvent) => {
+    if (!overlayRef.current || !dragging.current.mode) return;
 
-  const onPointerMove = (e: any) => {
-    if (!dragging.current.mode) return;
-    const ov = overlayRef.current!;
-    const rect = ov.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const rect = overlayRef.current.getBoundingClientRect();
+    const t = e.touches[0];
+    const x = t.clientX - rect.left;
+    const y = t.clientY - rect.top;
 
     const dx = x - dragging.current.startX;
     const dy = y - dragging.current.startY;
 
     if (dragging.current.mode === "move") {
-      let nx = dragging.current.startBox.x + dx;
-      let ny = dragging.current.startBox.y + dy;
-
-      // clamp to overlay bounds
-      nx = Math.max(0, Math.min(nx, ov.width - box.size));
-      ny = Math.max(0, Math.min(ny, ov.height - box.size));
-
-      setBox((b) => ({ ...b, x: nx, y: ny }));
-    } else if (dragging.current.mode === "resize") {
-      // only increase size by dx (square)
-      let newSize = Math.max(80, dragging.current.startBox.size + dx);
-      // clamp
-      newSize = Math.min(newSize, Math.min(ov.width - dragging.current.startBox.x, ov.height - dragging.current.startBox.y));
-      // Also ensure box remains within bounds when resizing from corner
-      setBox((b) => ({ ...b, size: newSize }));
+      setBox({
+        ...box,
+        x: dragging.current.boxStart.x + dx,
+        y: dragging.current.boxStart.y + dy,
+      });
     }
-    e.preventDefault?.();
+
+    if (dragging.current.mode === "resize") {
+      const newSize = Math.max(60, dragging.current.boxStart.size + dx);
+      setBox({
+        ...box,
+        size: newSize,
+      });
+    }
+
+    e.preventDefault();
   };
 
-  const onPointerUp = () => {
+  const onTouchEnd = () => {
     dragging.current.mode = null;
-    dragging.current.startBox = null;
   };
 
-  // attach pointer/touch/mouse listeners on overlay container
   useEffect(() => {
     const ov = overlayRef.current;
     if (!ov) return;
 
-    // pointer events if available (covers mouse & touch on modern browsers)
-    ov.addEventListener("pointerdown", (ev) => {
-      // only left mouse button or touch
-      if (ev.pointerType === "mouse" && ev.button !== 0) return;
-      startPointer(ev.clientX, ev.clientY);
-      (ov as any).setPointerCapture?.(ev.pointerId);
-      ev.preventDefault();
-    });
-
-    const ptrMove = (ev: PointerEvent) => {
-      if (!dragging.current.mode) return;
-      onPointerMove(ev);
-    };
-    const ptrUp = (ev: PointerEvent) => onPointerUp();
-
-    window.addEventListener("pointermove", ptrMove, { passive: false });
-    window.addEventListener("pointerup", ptrUp);
-
-    // fallback touch handlers (some older webviews)
-    ov.addEventListener("touchstart", onPointerDown, { passive: false });
-    ov.addEventListener("touchmove", onPointerMove, { passive: false });
-    ov.addEventListener("touchend", onPointerUp);
-
-    // mouse fallback
-    ov.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
-      onPointerDown(e);
-    });
-    window.addEventListener("mousemove", (e) => {
-      if (!dragging.current.mode) return;
-      onPointerMove(e);
-    });
-    window.addEventListener("mouseup", onPointerUp);
+    ov.addEventListener("touchstart", onTouchStart, { passive: false });
+    ov.addEventListener("touchmove", onTouchMove, { passive: false });
+    ov.addEventListener("touchend", onTouchEnd);
 
     return () => {
-      window.removeEventListener("pointermove", ptrMove);
-      window.removeEventListener("pointerup", ptrUp);
-      ov.removeEventListener("touchstart", onPointerDown);
-      ov.removeEventListener("touchmove", onPointerMove);
-      ov.removeEventListener("touchend", onPointerUp);
+      ov.removeEventListener("touchstart", onTouchStart);
+      ov.removeEventListener("touchmove", onTouchMove);
+      ov.removeEventListener("touchend", onTouchEnd);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [box, imgBitmap]);
+  });
 
-  /* CONFIRM CROP: convert overlay box -> image coords and output base64
-     We will scale down output on mobile for speed.
-  */
+  /* CONFIRM CROP */
   const confirmCrop = async () => {
     const cv = canvasRef.current!;
     const ctx = cv.getContext("2d") as any;
-    const pos = ctx.pos; // {dx, dy, drawW, drawH, scale}
-    const bmp = imgBitmap!;
-    if (!pos || !bmp) {
-      console.error("Canvas pos or bitmap missing");
-      return;
-    }
+    const pos = ctx.pos;
 
-    // Compute relative positions on original image (bitmap)
+    if (!pos || !bmp) return;
+
     const relX = (box.x - pos.dx) / pos.scale;
     const relY = (box.y - pos.dy) / pos.scale;
     const relSize = box.size / pos.scale;
 
-    // On mobile, reduce output resolution to speed up
-    const isMobile = window.innerWidth < 768;
-    const outSize = isMobile ? AVATAR_SIZE_MOBILE : AVATAR_SIZE_DESKTOP;
+    const out = document.createElement("canvas");
+    const outSize = window.innerWidth < 768 ? 700 : 1450;
+    out.width = outSize;
+    out.height = outSize;
 
-    // Create an offscreen canvas (or normal canvas if Offscreen not available)
-    const off = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(outSize, outSize) : document.createElement("canvas");
-    if (!(off as OffscreenCanvas).getContext) {
-      // convert to HTMLCanvasElement
-      (off as HTMLCanvasElement).width = outSize;
-      (off as HTMLCanvasElement).height = outSize;
-    } else {
-      (off as OffscreenCanvas).width = outSize;
-      (off as OffscreenCanvas).height = outSize;
-    }
-    const octx = (off as any).getContext("2d")! as CanvasRenderingContext2D;
-
-    // White background to avoid transparent edges
+    const octx = out.getContext("2d")!;
     octx.fillStyle = "#fff";
     octx.fillRect(0, 0, outSize, outSize);
 
-    // Draw the correct slice from original bitmap into the output canvas
-    // Note: use drawImage with source coordinates in original bitmap pixels
     octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, outSize, outSize);
 
-    // Convert to blob
-    let blob: Blob;
-    if ((off as OffscreenCanvas).convertToBlob) {
-      blob = await (off as OffscreenCanvas).convertToBlob({ type: "image/png", quality: 0.9 });
-    } else {
-      blob = await new Promise<Blob>((resolve) => {
-        (off as HTMLCanvasElement).toBlob((b) => resolve(b as Blob), "image/png", 0.9);
-      });
-    }
-
-    // Create base64 data url
-    const url = await new Promise<string>((resolve) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result as string);
-      fr.readAsDataURL(blob);
-    });
-
-    onUse(url);
+    const data = out.toDataURL("image/png");
+    onUse(data);
   };
 
   return (
@@ -553,26 +415,37 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
           <button onClick={onClose}>×</button>
         </div>
 
-        <div
-          className="relative w-full h-[480px] bg-black rounded overflow-hidden"
-          style={{ touchAction: "none" }}
-        >
+        <div className="relative w-full h-[480px] bg-black rounded overflow-hidden">
           <canvas ref={canvasRef} className="absolute w-full h-full" />
-          <canvas
+
+          {/* Transparent overlay to catch touch events */}
+          <div
             ref={overlayRef}
-            className="absolute w-full h-full"
-            // using pointer/touch events from useEffect attachments
-          />
+            className="absolute inset-0"
+            style={{
+              border: "2px solid transparent",
+              touchAction: "none",
+            }}
+          >
+            {/* Crop box visual */}
+            <div
+              style={{
+                position: "absolute",
+                left: box.x,
+                top: box.y,
+                width: box.size,
+                height: box.size,
+                border: "3px solid #3b82f6",
+              }}
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 mt-4">
           <button className="px-4 py-2 bg-gray-300 rounded" onClick={onClose}>
             Hủy
           </button>
-          <button
-            className="px-4 py-2 bg-blue-600 text-white rounded"
-            onClick={confirmCrop}
-          >
+          <button className="px-4 py-2 bg-blue-600 text-white rounded" onClick={confirmCrop}>
             Dùng ảnh này
           </button>
         </div>
@@ -580,3 +453,4 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     </div>
   );
 }
+
