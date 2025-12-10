@@ -230,15 +230,14 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
 
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
-  const [bmp, setBmp] = useState<any>(null);
-
-  // khung crop nhỏ hơn trên mobile
   const [box, setBox] = useState({
-    x: 60,
-    y: 60,
-    size: isMobile ? 180 : 320
+    x: 40,
+    y: 40,
+    size: isMobile ? 180 : 320,
   });
 
   const drag = useRef({
@@ -250,57 +249,40 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     os: 0
   });
 
-  /* LOAD IMAGE - SAFARI FIX */
+  /* LOAD IMAGE — SAFARI-FRIENDLY */
   useEffect(() => {
-    (async () => {
-      const blob = await (await fetch(imageUrl)).blob();
-      let bitmap;
-
-      try {
-        bitmap = await createImageBitmap(blob);
-      } catch {
-        // safari fallback
-        bitmap = await new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.src = URL.createObjectURL(blob);
-        });
-      }
-
-      setBmp(bitmap);
-    })();
+    const im = new Image();
+    im.onload = () => setImg(im);
+    im.src = imageUrl;
   }, [imageUrl]);
 
-
-  /* DRAW FULL */
+  /* DRAW IMAGE + BOX */
   const draw = () => {
-    if (!bmp || !canvasRef.current) return;
+    if (!img || !canvasRef.current) return;
 
     const cv = canvasRef.current;
     const ctx = cv.getContext("2d")!;
 
-    // dùng width/height thật để tránh sai số safari
     cv.width = cv.offsetWidth;
     cv.height = cv.offsetHeight;
 
     ctx.clearRect(0, 0, cv.width, cv.height);
 
-    const scale = Math.min(cv.width / bmp.width, cv.height / bmp.height);
-    const w = bmp.width * scale;
-    const h = bmp.height * scale;
+    const scale = Math.min(cv.width / img.width, cv.height / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
 
     const dx = (cv.width - w) / 2;
     const dy = (cv.height - h) / 2;
 
     (ctx as any).pos = { dx, dy, scale, w, h };
 
-    ctx.drawImage(bmp, dx, dy, w, h);
+    ctx.drawImage(img, dx, dy, w, h);
 
     drawOverlay();
   };
 
-
-  /* OVERLAY */
+  /* DRAW OVERLAY */
   const drawOverlay = () => {
     const ov = overlayRef.current;
     if (!ov) return;
@@ -311,7 +293,7 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
     ctx.clearRect(0, 0, ov.width, ov.height);
 
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.fillRect(0, 0, ov.width, ov.height);
 
     ctx.clearRect(box.x, box.y, box.size, box.size);
@@ -321,24 +303,25 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     ctx.strokeRect(box.x, box.y, box.size, box.size);
   };
 
-  useEffect(draw, [bmp, box]);
+  useEffect(draw, [img, box]);
 
-
-  /* UNIFIED POINT GETTER (fix safari) */
+  /* LẤY TOẠ ĐỘ CHUẨN TRÊN MOBILE */
   const getPoint = (e: any) => {
-    const touch = e.touches ? e.touches[0] : e;
-    const rect = overlayRef.current!;
-    const bound = rect.getBoundingClientRect();
+    const rect = overlayRef.current!.getBoundingClientRect();
+    let x, y;
 
-    // chuẩn hoá theo scale thực → hết lệch
-    const x = ((touch.clientX - bound.left) * (rect.offsetWidth / bound.width));
-    const y = ((touch.clientY - bound.top) * (rect.offsetHeight / bound.height));
+    if (e.touches && e.touches.length) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
 
     return { x, y };
   };
 
-
-  /* ON DOWN */
+  /* DOWN */
   const onDown = (e: any) => {
     e.preventDefault();
 
@@ -357,14 +340,12 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     drag.current.mode = nearResize ? "resize" : "move";
   };
 
-
   /* MOVE */
   const onMove = (e: any) => {
     if (!drag.current.mode) return;
     e.preventDefault();
 
     const { x, y } = getPoint(e);
-
     const dx = x - drag.current.sx;
     const dy = y - drag.current.sy;
 
@@ -376,7 +357,6 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
       let nx = drag.current.ox + dx;
       let ny = drag.current.oy + dy;
 
-      // giới hạn không trượt ra ngoài
       nx = Math.max(0, Math.min(maxW - box.size, nx));
       ny = Math.max(0, Math.min(maxH - box.size, ny));
 
@@ -384,47 +364,41 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     }
 
     if (drag.current.mode === "resize") {
-      let newSize = drag.current.os + dx;
+      let s = drag.current.os + dx;
 
-      newSize = Math.max(isMobile ? 120 : 200, newSize);
-      newSize = Math.min(maxW - box.x, newSize);
-      newSize = Math.min(maxH - box.y, newSize);
+      s = Math.max(isMobile ? 120 : 200, s);
+      s = Math.min(maxW - box.x, s);
+      s = Math.min(maxH - box.y, s);
 
-      setBox({ ...box, size: newSize });
+      setBox({ ...box, size: s });
     }
   };
 
-
   const onUp = () => (drag.current.mode = null);
 
-
-  /* FINAL CROP */
-  const confirmCrop = async () => {
+  /* CROP USING NORMAL CANVAS — SAFARI WORKS 100% */
+  const confirmCrop = () => {
     const cv = canvasRef.current!;
     const ctx = cv.getContext("2d")!;
     const pos = (ctx as any).pos;
 
-    const relX = (box.x - pos.dx) / pos.scale;
-    const relY = (box.y - pos.dy) / pos.scale;
-    const relSize = box.size / pos.scale;
+    const realX = (box.x - pos.dx) / pos.scale;
+    const realY = (box.y - pos.dy) / pos.scale;
+    const realSize = box.size / pos.scale;
 
-    const out = isMobile ? 550 : 900;
-    const off = new OffscreenCanvas(out, out);
-    const octx = off.getContext("2d")!;
+    const out = isMobile ? 600 : 1000;
 
-    octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, out, out);
+    const tmp = document.createElement("canvas");
+    tmp.width = out;
+    tmp.height = out;
 
-    const blob = await off.convertToBlob({ type: "image/jpeg", quality: 0.75 });
+    const tctx = tmp.getContext("2d")!;
+    tctx.drawImage(img!, realX, realY, realSize, realSize, 0, 0, out, out);
 
-    const base64 = await new Promise<string>((resolve) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result as string);
-      r.readAsDataURL(blob);
-    });
+    const base64 = tmp.toDataURL("image/jpeg", 0.85);
 
     onUse(base64);
   };
-
 
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50">
