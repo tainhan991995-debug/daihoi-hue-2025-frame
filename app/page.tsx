@@ -230,24 +230,34 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
 
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
   const [bmp, setBmp] = useState<any>(null);
-  const [box, setBox] = useState({ x: 200, y: 120, size: 300 });
+
+  // Khung crop nhỏ hơn nếu là mobile
+  const initialSize = isMobile ? 180 : 300;
+
+  const [box, setBox] = useState({
+    x: 120,
+    y: 100,
+    size: initialSize,
+  });
 
   const drag = useRef({
     mode: null as "move" | "resize" | null,
-    startX: 0,
-    startY: 0,
-    origX: 0,
-    origY: 0,
-    origSize: 0
+    sx: 0,
+    sy: 0,
+    ox: 0,
+    oy: 0,
+    os: 0,
   });
 
-  /* LOAD IMAGE — fallback cho iOS */
+  /* LOAD IMAGE WITH SAFARI FALLBACK */
   useEffect(() => {
     (async () => {
       const blob = await (await fetch(imageUrl)).blob();
-
       let bitmap;
+
       try {
         bitmap = await createImageBitmap(blob);
       } catch {
@@ -262,8 +272,8 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     })();
   }, [imageUrl]);
 
-  /* DRAW IMAGE + FRAME */
-  const drawAll = () => {
+  /* DRAW IMAGE */
+  const draw = () => {
     if (!bmp || !canvasRef.current) return;
 
     const cv = canvasRef.current;
@@ -275,15 +285,15 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     ctx.clearRect(0, 0, cv.width, cv.height);
 
     const scale = Math.min(cv.width / bmp.width, cv.height / bmp.height);
-    const drawW = bmp.width * scale;
-    const drawH = bmp.height * scale;
+    const w = bmp.width * scale;
+    const h = bmp.height * scale;
 
-    const dx = (cv.width - drawW) / 2;
-    const dy = (cv.height - drawH) / 2;
+    const dx = (cv.width - w) / 2;
+    const dy = (cv.height - h) / 2;
 
-    (ctx as any).pos = { dx, dy, scale };
+    (ctx as any).pos = { dx, dy, scale, w, h };
 
-    ctx.drawImage(bmp, dx, dy, drawW, drawH);
+    ctx.drawImage(bmp, dx, dy, w, h);
 
     drawOverlay();
   };
@@ -303,63 +313,73 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
     ctx.clearRect(box.x, box.y, box.size, box.size);
 
-    ctx.strokeStyle = "#3b82f6";
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#57A5FF";
+    ctx.lineWidth = 3;
     ctx.strokeRect(box.x, box.y, box.size, box.size);
   };
 
-  useEffect(drawAll, [bmp, box]);
+  useEffect(draw, [bmp, box]);
 
-  /* ======= UNIFIED TOUCH + MOUSE HANDLER ======= */
-
+  /* GET TOUCH OR MOUSE POINT */
   const getPoint = (e: any) => {
     if (e.touches) e = e.touches[0];
     const rect = overlayRef.current!.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
+  /* DOWN */
   const onDown = (e: any) => {
     const { x, y } = getPoint(e);
 
-    drag.current.startX = x;
-    drag.current.startY = y;
-    drag.current.origX = box.x;
-    drag.current.origY = box.y;
-    drag.current.origSize = box.size;
+    drag.current.sx = x;
+    drag.current.sy = y;
+    drag.current.ox = box.x;
+    drag.current.oy = box.y;
+    drag.current.os = box.size;
 
-    if (Math.abs(x - (box.x + box.size)) < 30 && Math.abs(y - (box.y + box.size)) < 30) {
-      drag.current.mode = "resize";
-    } else if (x > box.x && x < box.x + box.size && y > box.y && y < box.y + box.size) {
-      drag.current.mode = "move";
-    } else {
-      drag.current.mode = null;
-    }
+    const nearCorner = Math.abs(x - (box.x + box.size)) < 25 && Math.abs(y - (box.y + box.size)) < 25;
+
+    drag.current.mode = nearCorner ? "resize" : "move";
   };
 
+  /* MOVE */
   const onMove = (e: any) => {
     if (!drag.current.mode) return;
 
     const { x, y } = getPoint(e);
-    const dx = x - drag.current.startX;
-    const dy = y - drag.current.startY;
+    const dx = x - drag.current.sx;
+    const dy = y - drag.current.sy;
+
+    const ov = overlayRef.current!;
+    const maxW = ov.clientWidth;
+    const maxH = ov.clientHeight;
 
     if (drag.current.mode === "move") {
-      setBox({
-        ...box,
-        x: drag.current.origX + dx,
-        y: drag.current.origY + dy,
-      });
+      let newX = drag.current.ox + dx;
+      let newY = drag.current.oy + dy;
+
+      // Giới hạn không cho ra ngoài
+      newX = Math.max(0, Math.min(maxW - box.size, newX));
+      newY = Math.max(0, Math.min(maxH - box.size, newY));
+
+      setBox({ ...box, x: newX, y: newY });
     }
 
     if (drag.current.mode === "resize") {
-      const newSize = Math.max(100, drag.current.origSize + dx);
+      let newSize = drag.current.os + dx;
+
+      // Giới hạn kích thước nhỏ / lớn
+      newSize = Math.max(isMobile ? 120 : 200, newSize);
+      newSize = Math.min(maxW - box.x, newSize);
+      newSize = Math.min(maxH - box.y, newSize);
+
       setBox({ ...box, size: newSize });
     }
   };
 
   const onUp = () => (drag.current.mode = null);
 
-  /* ===== CROP ===== */
+  /* CONFIRM CROP */
   const confirmCrop = async () => {
     const cv = canvasRef.current!;
     const pos = (cv.getContext("2d") as any).pos;
@@ -368,25 +388,27 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     const relY = (box.y - pos.dy) / pos.scale;
     const relSize = box.size / pos.scale;
 
-    const off = new OffscreenCanvas(450, 450); // avatar nhỏ -> nhẹ
+    const outSize = isMobile ? 550 : 900;
+
+    const off = new OffscreenCanvas(outSize, outSize);
     const octx = off.getContext("2d")!;
 
-    octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, 450, 450);
+    octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, outSize, outSize);
 
-    const blob = await off.convertToBlob({ type: "image/jpeg", quality: 0.7 });
+    const blob = await off.convertToBlob({ type: "image/jpeg", quality: 0.75 });
 
-    const url = await new Promise<string>((resolve) => {
+    const base64 = await new Promise<string>((resolve) => {
       const r = new FileReader();
       r.onload = () => resolve(r.result as string);
       r.readAsDataURL(blob);
     });
 
-    onUse(url);
+    onUse(base64);
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50">
-      <div className="bg-white p-4 rounded-xl w-[90%] max-w-[760px]">
+      <div className="bg-white p-4 rounded-xl w-[92%] max-w-[760px]">
         <h2 className="text-lg font-semibold mb-3">Cắt ảnh</h2>
 
         <div
@@ -404,7 +426,7 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
         <div className="flex justify-end gap-3 mt-4">
           <button onClick={onClose}>Hủy</button>
-          <button onClick={confirmCrop} className="bg-blue-600 text-white px-4 py-2 rounded">
+          <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={confirmCrop}>
             Dùng ảnh này
           </button>
         </div>
