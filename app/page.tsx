@@ -234,13 +234,11 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
   const [bmp, setBmp] = useState<any>(null);
 
-  // Khung crop nhỏ hơn nếu là mobile
-  const initialSize = isMobile ? 180 : 300;
-
+  // khung crop nhỏ hơn trên mobile
   const [box, setBox] = useState({
-    x: 120,
-    y: 100,
-    size: initialSize,
+    x: 60,
+    y: 60,
+    size: isMobile ? 180 : 320
   });
 
   const drag = useRef({
@@ -249,10 +247,10 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     sy: 0,
     ox: 0,
     oy: 0,
-    os: 0,
+    os: 0
   });
 
-  /* LOAD IMAGE WITH SAFARI FALLBACK */
+  /* LOAD IMAGE - SAFARI FIX */
   useEffect(() => {
     (async () => {
       const blob = await (await fetch(imageUrl)).blob();
@@ -261,6 +259,7 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
       try {
         bitmap = await createImageBitmap(blob);
       } catch {
+        // safari fallback
         bitmap = await new Promise((resolve) => {
           const img = new Image();
           img.onload = () => resolve(img);
@@ -272,15 +271,17 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     })();
   }, [imageUrl]);
 
-  /* DRAW IMAGE */
+
+  /* DRAW FULL */
   const draw = () => {
     if (!bmp || !canvasRef.current) return;
 
     const cv = canvasRef.current;
     const ctx = cv.getContext("2d")!;
 
-    cv.width = cv.clientWidth;
-    cv.height = cv.clientHeight;
+    // dùng width/height thật để tránh sai số safari
+    cv.width = cv.offsetWidth;
+    cv.height = cv.offsetHeight;
 
     ctx.clearRect(0, 0, cv.width, cv.height);
 
@@ -298,13 +299,15 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     drawOverlay();
   };
 
+
+  /* OVERLAY */
   const drawOverlay = () => {
     const ov = overlayRef.current;
     if (!ov) return;
 
     const ctx = ov.getContext("2d")!;
-    ov.width = ov.clientWidth;
-    ov.height = ov.clientHeight;
+    ov.width = ov.offsetWidth;
+    ov.height = ov.offsetHeight;
 
     ctx.clearRect(0, 0, ov.width, ov.height);
 
@@ -313,22 +316,32 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
     ctx.clearRect(box.x, box.y, box.size, box.size);
 
-    ctx.strokeStyle = "#57A5FF";
+    ctx.strokeStyle = "#4FA3FF";
     ctx.lineWidth = 3;
     ctx.strokeRect(box.x, box.y, box.size, box.size);
   };
 
   useEffect(draw, [bmp, box]);
 
-  /* GET TOUCH OR MOUSE POINT */
+
+  /* UNIFIED POINT GETTER (fix safari) */
   const getPoint = (e: any) => {
-    if (e.touches) e = e.touches[0];
-    const rect = overlayRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const touch = e.touches ? e.touches[0] : e;
+    const rect = overlayRef.current!;
+    const bound = rect.getBoundingClientRect();
+
+    // chuẩn hoá theo scale thực → hết lệch
+    const x = ((touch.clientX - bound.left) * (rect.offsetWidth / bound.width));
+    const y = ((touch.clientY - bound.top) * (rect.offsetHeight / bound.height));
+
+    return { x, y };
   };
 
-  /* DOWN */
+
+  /* ON DOWN */
   const onDown = (e: any) => {
+    e.preventDefault();
+
     const { x, y } = getPoint(e);
 
     drag.current.sx = x;
@@ -337,38 +350,42 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     drag.current.oy = box.y;
     drag.current.os = box.size;
 
-    const nearCorner = Math.abs(x - (box.x + box.size)) < 25 && Math.abs(y - (box.y + box.size)) < 25;
+    const nearResize =
+      Math.abs(x - (box.x + box.size)) < 30 &&
+      Math.abs(y - (box.y + box.size)) < 30;
 
-    drag.current.mode = nearCorner ? "resize" : "move";
+    drag.current.mode = nearResize ? "resize" : "move";
   };
+
 
   /* MOVE */
   const onMove = (e: any) => {
     if (!drag.current.mode) return;
+    e.preventDefault();
 
     const { x, y } = getPoint(e);
+
     const dx = x - drag.current.sx;
     const dy = y - drag.current.sy;
 
     const ov = overlayRef.current!;
-    const maxW = ov.clientWidth;
-    const maxH = ov.clientHeight;
+    const maxW = ov.offsetWidth;
+    const maxH = ov.offsetHeight;
 
     if (drag.current.mode === "move") {
-      let newX = drag.current.ox + dx;
-      let newY = drag.current.oy + dy;
+      let nx = drag.current.ox + dx;
+      let ny = drag.current.oy + dy;
 
-      // Giới hạn không cho ra ngoài
-      newX = Math.max(0, Math.min(maxW - box.size, newX));
-      newY = Math.max(0, Math.min(maxH - box.size, newY));
+      // giới hạn không trượt ra ngoài
+      nx = Math.max(0, Math.min(maxW - box.size, nx));
+      ny = Math.max(0, Math.min(maxH - box.size, ny));
 
-      setBox({ ...box, x: newX, y: newY });
+      setBox({ ...box, x: nx, y: ny });
     }
 
     if (drag.current.mode === "resize") {
       let newSize = drag.current.os + dx;
 
-      // Giới hạn kích thước nhỏ / lớn
       newSize = Math.max(isMobile ? 120 : 200, newSize);
       newSize = Math.min(maxW - box.x, newSize);
       newSize = Math.min(maxH - box.y, newSize);
@@ -377,23 +394,25 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     }
   };
 
+
   const onUp = () => (drag.current.mode = null);
 
-  /* CONFIRM CROP */
+
+  /* FINAL CROP */
   const confirmCrop = async () => {
     const cv = canvasRef.current!;
-    const pos = (cv.getContext("2d") as any).pos;
+    const ctx = cv.getContext("2d")!;
+    const pos = (ctx as any).pos;
 
     const relX = (box.x - pos.dx) / pos.scale;
     const relY = (box.y - pos.dy) / pos.scale;
     const relSize = box.size / pos.scale;
 
-    const outSize = isMobile ? 550 : 900;
-
-    const off = new OffscreenCanvas(outSize, outSize);
+    const out = isMobile ? 550 : 900;
+    const off = new OffscreenCanvas(out, out);
     const octx = off.getContext("2d")!;
 
-    octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, outSize, outSize);
+    octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, out, out);
 
     const blob = await off.convertToBlob({ type: "image/jpeg", quality: 0.75 });
 
@@ -406,9 +425,11 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     onUse(base64);
   };
 
+
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50">
       <div className="bg-white p-4 rounded-xl w-[92%] max-w-[760px]">
+
         <h2 className="text-lg font-semibold mb-3">Cắt ảnh</h2>
 
         <div
