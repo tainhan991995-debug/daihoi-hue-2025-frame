@@ -1,0 +1,4 @@
+ CSS chính thức của CropperJS từ bản 1.5.x 
+   (react-cropper mới không kèm CSS, nên phải tự import)
+
+@import url(httpsunpkg.comcropperjs@1.5.13distcropper.css);
