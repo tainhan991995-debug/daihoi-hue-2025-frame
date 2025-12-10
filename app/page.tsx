@@ -9,7 +9,7 @@ import { drawTexts } from "@/components/canvas/drawTexts";
 import { drawWatermark } from "@/components/canvas/drawLogos";
 
 const API_URL =
-  "https://script.google.com/macros/s/AKfycby6p-gDoHlx_cnlsK4iEo6p5pji-knN7LDmT5sRNgfzMAvRzTJQyJ5uyheWhQlmGhPC/exec";
+  "https://script.google.com/macros/s/AKfycby4NIv4f2JHteHz9U1nC-f60gs8pVtfTdlKCqvA6wyi-1w2uBQaDiUFMaHRA51so5hc/exec";
 
 // FRAME
 const FRAME_WIDTH = 7550;
@@ -94,40 +94,36 @@ export default function Page() {
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-
     const url = URL.createObjectURL(f);
     setRawImageURL(url);
     setShowCropper(true);
   };
 
   /* ================= SEND TO GOOGLE SHEET (JSON) ================= */
-const sendToGoogleSheet = async (base64Image: string) => {
-  try {
-    const data = {
-      name,
-      roleUnit,
-      message,
-      base64Image,
-      userAgent: navigator.userAgent,
-    };
+  const sendToGoogleSheet = async (base64Image: string) => {
+    try {
+      const data = {
+        name,
+        roleUnit,
+        message,
+        base64Image,
+        userAgent: navigator.userAgent,
+      };
 
-    console.log("✓ Dữ liệu gửi JSON:", data);
+      console.log(">>> Payload:", data);
 
-    await fetch(API_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    });
-
-    console.log("✓ Gửi Google Sheet thành công (JSON + no-cors)");
-  } catch (err) {
-    console.error("Lỗi gửi Google Sheet:", err);
-  }
-};
-
+      await fetch(API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+    } catch (err) {
+      console.error("Lỗi gửi Google Sheet:", err);
+    }
+  };
 
   /* ================= DOWNLOAD ================= */
   const downloadImage = () => {
@@ -194,12 +190,12 @@ const sendToGoogleSheet = async (base64Image: string) => {
           </button>
         </div>
 
-        {/* CANVAS */}
+        {/* CANVAS PREVIEW */}
         <div className="flex justify-center">
           <canvas
             ref={canvasRef}
             className="rounded-xl shadow-xl"
-            style={{ width: "100%", aspectRatio: "7550 / 3980" }}
+            style={{ width: "100%", aspectRatio: "7550/3980" }}
           />
         </div>
       </div>
@@ -234,10 +230,13 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
+  // khung crop vào giữa
+  const startSize = isMobile ? 150 : 300;
+
   const [box, setBox] = useState({
-    x: 40,
-    y: 40,
-    size: isMobile ? 180 : 320,
+    x: 200,
+    y: 130,
+    size: startSize,
   });
 
   const drag = useRef({
@@ -246,17 +245,16 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     sy: 0,
     ox: 0,
     oy: 0,
-    os: 0
+    os: 0,
   });
 
-  /* LOAD IMAGE — SAFARI-FRIENDLY */
+  /* LOAD IMAGE */
   useEffect(() => {
     const im = new Image();
     im.onload = () => setImg(im);
     im.src = imageUrl;
   }, [imageUrl]);
 
-  /* DRAW IMAGE + BOX */
   const draw = () => {
     if (!img || !canvasRef.current) return;
 
@@ -282,7 +280,6 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     drawOverlay();
   };
 
-  /* DRAW OVERLAY */
   const drawOverlay = () => {
     const ov = overlayRef.current;
     if (!ov) return;
@@ -291,9 +288,7 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     ov.width = ov.offsetWidth;
     ov.height = ov.offsetHeight;
 
-    ctx.clearRect(0, 0, ov.width, ov.height);
-
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.fillRect(0, 0, ov.width, ov.height);
 
     ctx.clearRect(box.x, box.y, box.size, box.size);
@@ -305,26 +300,22 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
   useEffect(draw, [img, box]);
 
-  /* LẤY TOẠ ĐỘ CHUẨN TRÊN MOBILE */
   const getPoint = (e: any) => {
     const rect = overlayRef.current!.getBoundingClientRect();
-    let x, y;
-
     if (e.touches && e.touches.length) {
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
-    } else {
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top,
+      };
     }
-
-    return { x, y };
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
   };
 
-  /* DOWN */
   const onDown = (e: any) => {
     e.preventDefault();
-
     const { x, y } = getPoint(e);
 
     drag.current.sx = x;
@@ -333,16 +324,15 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     drag.current.oy = box.y;
     drag.current.os = box.size;
 
-    const nearResize =
-      Math.abs(x - (box.x + box.size)) < 30 &&
-      Math.abs(y - (box.y + box.size)) < 30;
+    const near = Math.abs(x - (box.x + box.size)) < 30 &&
+                 Math.abs(y - (box.y + box.size)) < 30;
 
-    drag.current.mode = nearResize ? "resize" : "move";
+    drag.current.mode = near ? "resize" : "move";
   };
 
-  /* MOVE */
   const onMove = (e: any) => {
     if (!drag.current.mode) return;
+
     e.preventDefault();
 
     const { x, y } = getPoint(e);
@@ -376,7 +366,7 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
 
   const onUp = () => (drag.current.mode = null);
 
-  /* CROP USING NORMAL CANVAS — SAFARI WORKS 100% */
+  /* CONFIRM CROP — SAFARI COMPATIBLE */
   const confirmCrop = () => {
     const cv = canvasRef.current!;
     const ctx = cv.getContext("2d")!;
@@ -386,14 +376,13 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     const realY = (box.y - pos.dy) / pos.scale;
     const realSize = box.size / pos.scale;
 
-    const out = isMobile ? 600 : 1000;
-
+    const output = isMobile ? 600 : 1200;
     const tmp = document.createElement("canvas");
-    tmp.width = out;
-    tmp.height = out;
-
+    tmp.width = output;
+    tmp.height = output;
     const tctx = tmp.getContext("2d")!;
-    tctx.drawImage(img!, realX, realY, realSize, realSize, 0, 0, out, out);
+
+    tctx.drawImage(img!, realX, realY, realSize, realSize, 0, 0, output, output);
 
     const base64 = tmp.toDataURL("image/jpeg", 0.85);
 
