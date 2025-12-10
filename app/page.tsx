@@ -15,8 +15,8 @@ const AVATAR_SIZE = 1450;
 const AVATAR_X = 1450 - AVATAR_SIZE / 2;
 const AVATAR_Y = 1290 - 118;
 
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbwpj76TPIHUrL6RQNoO2g3RmzMBSQYkFDXtrbE5SawCe8MQfJvR6RXbIM_DNtlfb80K/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzaDm_i5BE6qYHaMaKGEmOyiUzC1Q3Mbr9MtvCC_ilx2MEVSY66tKaBJWp7_O4tmRxF/exec";
+
 
 const CONFIG = {
   NAME_X: 1440,
@@ -110,9 +110,9 @@ const sendToGoogleSheet = async (base64Image: string) => {
   console.log("Payload:", payload);
 
   try {
-    const response = await fetch(
-      "https://script.google.com/macros/s/AKfycbwvBMlNmyhF--o2qExYGrVEypJ8hTvP3ASgP_7o0E5wxZBCtqmTkk7pZE6_zbbCDByB/exec",
-      {
+   
+      { const response = await fetch(
+  "https://script.google.com/macros/s/AKfycbzaDm_i5BE6qYHaMaKGEmOyiUzC1Q3Mbr9MtvCC_ilx2MEVSY66tKaBJWp7_O4tmRxF/exec",
         method: "POST",
         mode: "no-cors", // ⭐ BẮT BUỘC đối với Google Apps Script
         headers: {
