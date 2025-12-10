@@ -186,19 +186,19 @@ const sendToGoogleSheet = async (base64Image: string) => {
       </div>
 
       {/* CROP MODAL */}
-      {showCropper && rawImageURL && (
-        <CropModal
-          imageUrl={rawImageURL}
-          onClose={() => {
-            URL.revokeObjectURL(rawImageURL);
-            setShowCropper(false);
-          }}
-          onUse={(img) => {
-            setCroppedImage(img);
-            setShowCropper(false);
-          }}
-        />
-      )}
+   {showCropper && rawImageURL && (
+  <CropModal
+    imageUrl={rawImageURL}
+    onClose={() => {
+      URL.revokeObjectURL(rawImageURL);
+      setShowCropper(false);
+    }}
+    onUse={(img: string) => {
+      setCroppedImage(img);
+      setShowCropper(false);
+    }}
+  />
+)}
     </div>
   );
 }
