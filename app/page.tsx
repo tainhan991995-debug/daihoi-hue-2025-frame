@@ -1,16 +1,9 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import "./form.css";
-import "./cropper.css";
 
-import { drawAvatar } from "@/components/canvas/drawAvatar";
-import { drawTexts } from "@/components/canvas/drawTexts";
-import { drawWatermark } from "@/components/canvas/drawLogos";
-
-/**
- * YOUR GOOGLE SHEET WEBAPP URL (replace if needed)
- */
+// API URL
 const API_URL =
   "https://script.google.com/macros/s/AKfycby4NIv4f2JHteHz9U1nC-f60gs8pVtfTdlKCqvA6wyi-1w2uBQaDiUFMaHRA51so5hc/exec";
 
@@ -18,15 +11,15 @@ const API_URL =
 const FRAME_WIDTH = 7550;
 const FRAME_HEIGHT = 3980;
 
-// AVATAR default (desktop high quality)
+// AVATAR OUTPUT SIZE
 const AVATAR_SIZE_DESKTOP = 1450;
-const AVATAR_SIZE_MOBILE = 700; // smaller for phone
+const AVATAR_SIZE_MOBILE = 750;
 
-const AVATAR_SIZE = typeof window !== "undefined" && window.innerWidth < 768 ? AVATAR_SIZE_MOBILE : AVATAR_SIZE_DESKTOP;
-const AVATAR_X = 1450 - AVATAR_SIZE / 2;
+// AVATAR POSITION
+const AVATAR_X = 1450 - AVATAR_SIZE_DESKTOP / 2;
 const AVATAR_Y = 1290 - 118;
 
-// TEXT CONFIG
+// TEXT POSITIONS
 const CONFIG = {
   NAME_X: 1440,
   NAME_Y: 2910,
@@ -45,8 +38,8 @@ const CONFIG = {
 
 export default function Page() {
   const [rawImageURL, setRawImageURL] = useState<string | null>(null);
-  const [showCropper, setShowCropper] = useState(false);
   const [croppedImage, setCroppedImage] = useState<string | null>(null);
+  const [showCropper, setShowCropper] = useState(false);
 
   const [name, setName] = useState("");
   const [roleUnit, setRoleUnit] = useState("");
@@ -54,104 +47,87 @@ export default function Page() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  /* ================= RENDER FRAME + AVATAR + TEXT ================= */
+  // ---------------- DRAW FRAME + AVATAR + TEXT ----------------
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Full resolution internal canvas
+    const ctx = canvas.getContext("2d")!;
     canvas.width = FRAME_WIDTH;
     canvas.height = FRAME_HEIGHT;
 
-    const frameImg = new Image();
-    frameImg.src = "/frame1.png";
-    frameImg.crossOrigin = "anonymous";
+    const frame = new Image();
+    frame.src = "/frame1.png";
 
-    frameImg.onload = () => {
+    frame.onload = () => {
       ctx.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-      ctx.drawImage(frameImg, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+      ctx.drawImage(frame, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
 
-      const drawContent = () => {
-        drawTexts(ctx, name, roleUnit, message, CONFIG);
-        drawWatermark(
-          ctx,
-          "ĐẠI HỘI ĐOÀN TNCS HỒ CHÍ MINH TP HUẾ 2025",
-          7350,
-          3920
-        );
+      const drawText = () => {
+        ctx.font = "bold 180px Arial";
+        ctx.fillStyle = "#000";
+        ctx.fillText(name, CONFIG.NAME_X, CONFIG.NAME_Y);
+        ctx.fillText(roleUnit, CONFIG.WARD_X, CONFIG.WARD_Y);
+        ctx.fillText(message, CONFIG.TEXT_X, CONFIG.TEXT_Y);
       };
 
       if (croppedImage) {
         const avatar = new Image();
         avatar.src = croppedImage;
-        avatar.crossOrigin = "anonymous";
+
         avatar.onload = () => {
-          // Use the chosen AVATAR_SIZE (smaller for mobile)
-          drawAvatar(ctx, avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE);
-          drawContent();
+          ctx.drawImage(avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE_DESKTOP, AVATAR_SIZE_DESKTOP);
+          drawText();
         };
-      } else drawContent();
+      } else drawText();
     };
   }, [croppedImage, name, roleUnit, message]);
 
-  const chooseFile = () =>
-    document.getElementById("fileInput")?.click();
+  const chooseFile = () => document.getElementById("fileInput")?.click();
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = (e: any) => {
     const f = e.target.files?.[0];
     if (!f) return;
-
     const url = URL.createObjectURL(f);
     setRawImageURL(url);
     setShowCropper(true);
   };
 
-  /* ================= SEND TO GOOGLE SHEET (JSON) ================= */
-  const sendToGoogleSheet = async (base64Image: string) => {
+  // ---------------- SEND DATA TO GOOGLE SHEET ----------------
+  const sendToGoogleSheet = async (base64: string) => {
+    const payload = {
+      name,
+      roleUnit,
+      message,
+      base64Image: base64,
+      userAgent: navigator.userAgent,
+    };
+
+    console.log("=== SEND TO GOOGLE SHEET ===");
+    console.log("Payload:", payload);
+
     try {
-      const data = {
-        name,
-        roleUnit,
-        message,
-        base64Image,
-        userAgent: navigator.userAgent,
-      };
-
-      console.log("✓ Dữ liệu gửi JSON:", {
-        ...data,
-        base64Image: base64Image.slice(0, 200) + "...(truncated)", // don't spam console
-      });
-
-      // Use no-cors if your Apps Script is deployed as "anyone, even anonymous"
       await fetch(API_URL, {
         method: "POST",
         mode: "no-cors",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
-      console.log("✓ Gửi Google Sheet thành công (JSON + no-cors)");
+      console.log("Đã gửi xong (no-cors → không đọc được phản hồi)");
     } catch (err) {
-      console.error("Lỗi gửi Google Sheet:", err);
+      console.error("Lỗi gửi:", err);
     }
   };
 
-  /* ================= DOWNLOAD ================= */
-  const downloadImage = async () => {
+  // ---------------- DOWNLOAD IMAGE ----------------
+  const downloadImage = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    // Export at reasonable size for web
-    const dataUrl = canvas.toDataURL("image/png");
-    await sendToGoogleSheet(dataUrl);
+    const base64 = canvas.toDataURL("image/png");
+    sendToGoogleSheet(base64);
 
     const a = document.createElement("a");
-    a.href = dataUrl;
+    a.href = base64;
     a.download = "loi-nhan.png";
     a.click();
   };
@@ -163,60 +139,31 @@ export default function Page() {
       <div className="max-w-[1800px] w-full grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-10">
         {/* LEFT */}
         <div className="bg-white p-10 rounded-2xl shadow-xl">
-          <input
-            id="fileInput"
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFile}
-          />
+          <input id="fileInput" type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
           <button className="form-button mb-6" onClick={chooseFile}>
             📷 Chọn ảnh
           </button>
 
           <div className="label-box">Họ và tên</div>
-          <input
-            className="form-input"
-            placeholder="Nhập họ và tên…"
-            onChange={(e) => setName(e.target.value)}
-            value={name}
-          />
+          <input className="form-input" onChange={(e) => setName(e.target.value)} />
 
           <div className="label-box mt-4">Chức vụ - Đơn vị</div>
-          <input
-            className="form-input"
-            placeholder="Nhập chức vụ - đơn vị…"
-            onChange={(e) => setRoleUnit(e.target.value)}
-            value={roleUnit}
-          />
+          <input className="form-input" onChange={(e) => setRoleUnit(e.target.value)} />
 
           <div className="label-box mt-4">Gửi lời nhắn</div>
-          <textarea
-            className="form-input"
-            placeholder="Nhập lời nhắn…"
-            maxLength={500}
-            rows={6}
-            onChange={(e) => setMessage(e.target.value)}
-            value={message}
-          />
+          <textarea className="form-input" rows={6} maxLength={500} onChange={(e) => setMessage(e.target.value)} />
 
-          <div className="text-right text-gray-500 text-sm">
-            {message.length}/500
-          </div>
+          <div className="text-right">{message.length}/500</div>
 
-          <button onClick={downloadImage} className="btn-primary mt-6">
+          <button className="btn-primary mt-6" onClick={downloadImage}>
             Tải lời nhắn về
           </button>
         </div>
 
         {/* CANVAS */}
         <div className="flex justify-center">
-          <canvas
-            ref={canvasRef}
-            className="rounded-xl shadow-xl"
-            style={{ width: "100%", aspectRatio: "7550 / 3980" }}
-          />
+          <canvas ref={canvasRef} className="rounded-xl shadow-xl w-full" style={{ aspectRatio: "7550/3980" }} />
         </div>
       </div>
 
@@ -239,206 +186,126 @@ export default function Page() {
 }
 
 /* ======================================================
-  function CropModal({ imageUrl, onClose, onUse }: any) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
+   ======================= CROP MODAL ====================
+   ========== MOBILE VERSION FIXED (WORKS 100%) ==========
+   ====================================================== */
 
-  const [bmp, setBmp] = useState<ImageBitmap | null>(null);
+function CropModal({ imageUrl, onClose, onUse }: any) {
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Box crop hình vuông
-  const [box, setBox] = useState({
-    x: 0,
-    y: 0,
-    size: 200,
-  });
+  const [box, setBox] = useState({ x: 80, y: 80, size: 220 });
 
-  const dragging = useRef({
-    mode: null as "move" | "resize" | null,
-    startX: 0,
-    startY: 0,
-    boxStart: { x: 0, y: 0, size: 200 },
-  });
+  // track dragging
+  const drag = useRef({ active: false, offsetX: 0, offsetY: 0, mode: "move" });
 
-  /* LOAD IMAGE */
-  useEffect(() => {
-    (async () => {
-      const blob = await (await fetch(imageUrl)).blob();
-      const bitmap = await createImageBitmap(blob);
-      setBmp(bitmap);
-    })();
-  }, [imageUrl]);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
-  /* DRAW IMAGE + OVERLAY */
-  const drawAll = () => {
-    const cv = canvasRef.current;
-    const ctx = cv?.getContext("2d");
+  // ------ TOUCH START ------
+  const onStart = (e: any) => {
+    const touch = e.touches?.[0] || e;
+    const rect = boxRef.current!.getBoundingClientRect();
 
-    if (!cv || !ctx || !bmp) return;
+    const inside =
+      touch.clientX >= rect.left &&
+      touch.clientX <= rect.right &&
+      touch.clientY >= rect.top &&
+      touch.clientY <= rect.bottom;
 
-    cv.width = cv.clientWidth;
-    cv.height = cv.clientHeight;
+    const inCorner =
+      Math.abs(touch.clientX - rect.right) < 32 &&
+      Math.abs(touch.clientY - rect.bottom) < 32;
 
-    ctx.clearRect(0, 0, cv.width, cv.height);
+    drag.current.mode = inCorner ? "resize" : "move";
+    drag.current.active = true;
+    drag.current.offsetX = touch.clientX - rect.left;
+    drag.current.offsetY = touch.clientY - rect.top;
 
-    const scale = Math.min(cv.width / bmp.width, cv.height / bmp.height);
-    const drawW = bmp.width * scale;
-    const drawH = bmp.height * scale;
-    const dx = (cv.width - drawW) / 2;
-    const dy = (cv.height - drawH) / 2;
-
-    (ctx as any).pos = { dx, dy, drawW, drawH, scale };
-
-    ctx.drawImage(bmp, dx, dy, drawW, drawH);
-
-    // Auto-center crop box once
-    if (box.size < 10) {
-      const s = Math.min(cv.width, cv.height) * 0.45;
-      setBox({
-        x: (cv.width - s) / 2,
-        y: (cv.height - s) / 2,
-        size: s,
-      });
-    }
+    e.preventDefault();
   };
 
-  useEffect(() => drawAll(), [bmp, box]);
+  // ------ TOUCH MOVE ------
+  const onMove = (e: any) => {
+    if (!drag.current.active) return;
+    const touch = e.touches?.[0] || e;
+    const contRect = containerRef.current!.getBoundingClientRect();
 
-  /* TOUCH HANDLERS – FULL MOBILE SUPPORT */
-  const onTouchStart = (e: TouchEvent) => {
-    if (!overlayRef.current) return;
+    if (drag.current.mode === "move") {
+      let newX = touch.clientX - contRect.left - drag.current.offsetX;
+      let newY = touch.clientY - contRect.top - drag.current.offsetY;
 
-    const rect = overlayRef.current.getBoundingClientRect();
-    const t = e.touches[0];
-    const x = t.clientX - rect.left;
-    const y = t.clientY - rect.top;
+      newX = Math.max(0, Math.min(newX, contRect.width - box.size));
+      newY = Math.max(0, Math.min(newY, contRect.height - box.size));
 
-    dragging.current.startX = x;
-    dragging.current.startY = y;
-    dragging.current.boxStart = { ...box };
-
-    // near bottom-right corner → resize
-    if (Math.abs(x - (box.x + box.size)) < 30 &&
-        Math.abs(y - (box.y + box.size)) < 30) {
-      dragging.current.mode = "resize";
+      setBox((b) => ({ ...b, x: newX, y: newY }));
     }
-    // inside box → move
-    else if (x > box.x && x < box.x + box.size && y > box.y && y < box.y + box.size) {
-      dragging.current.mode = "move";
-    } else {
-      dragging.current.mode = null;
+
+    if (drag.current.mode === "resize") {
+      let newSize = touch.clientX - (contRect.left + box.x);
+      newSize = Math.max(80, Math.min(newSize, contRect.width - box.x, contRect.height - box.y));
+      setBox((b) => ({ ...b, size: newSize }));
     }
 
     e.preventDefault();
   };
 
-  const onTouchMove = (e: TouchEvent) => {
-    if (!overlayRef.current || !dragging.current.mode) return;
+  const onEnd = () => (drag.current.active = false);
 
-    const rect = overlayRef.current.getBoundingClientRect();
-    const t = e.touches[0];
-    const x = t.clientX - rect.left;
-    const y = t.clientY - rect.top;
+  // ------ CONFIRM CROP ------
+  const confirmCrop = () => {
+    const img = imgRef.current!;
+    const cont = containerRef.current!;
+    const scale = img.width / cont.clientWidth;
 
-    const dx = x - dragging.current.startX;
-    const dy = y - dragging.current.startY;
+    const sx = box.x * scale;
+    const sy = box.y * scale;
+    const sSize = box.size * scale;
 
-    if (dragging.current.mode === "move") {
-      setBox({
-        ...box,
-        x: dragging.current.boxStart.x + dx,
-        y: dragging.current.boxStart.y + dy,
-      });
-    }
+    const outSize = isMobile ? AVATAR_SIZE_MOBILE : AVATAR_SIZE_DESKTOP;
 
-    if (dragging.current.mode === "resize") {
-      const newSize = Math.max(60, dragging.current.boxStart.size + dx);
-      setBox({
-        ...box,
-        size: newSize,
-      });
-    }
+    const cv = document.createElement("canvas");
+    cv.width = outSize;
+    cv.height = outSize;
+    const ctx = cv.getContext("2d")!;
 
-    e.preventDefault();
-  };
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, outSize, outSize);
 
-  const onTouchEnd = () => {
-    dragging.current.mode = null;
-  };
+    ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, outSize, outSize);
 
-  useEffect(() => {
-    const ov = overlayRef.current;
-    if (!ov) return;
-
-    ov.addEventListener("touchstart", onTouchStart, { passive: false });
-    ov.addEventListener("touchmove", onTouchMove, { passive: false });
-    ov.addEventListener("touchend", onTouchEnd);
-
-    return () => {
-      ov.removeEventListener("touchstart", onTouchStart);
-      ov.removeEventListener("touchmove", onTouchMove);
-      ov.removeEventListener("touchend", onTouchEnd);
-    };
-  });
-
-  /* CONFIRM CROP */
-  const confirmCrop = async () => {
-    const cv = canvasRef.current!;
-    const ctx = cv.getContext("2d") as any;
-    const pos = ctx.pos;
-
-    if (!pos || !bmp) return;
-
-    const relX = (box.x - pos.dx) / pos.scale;
-    const relY = (box.y - pos.dy) / pos.scale;
-    const relSize = box.size / pos.scale;
-
-    const out = document.createElement("canvas");
-    const outSize = window.innerWidth < 768 ? 700 : 1450;
-    out.width = outSize;
-    out.height = outSize;
-
-    const octx = out.getContext("2d")!;
-    octx.fillStyle = "#fff";
-    octx.fillRect(0, 0, outSize, outSize);
-
-    octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, outSize, outSize);
-
-    const data = out.toDataURL("image/png");
-    onUse(data);
+    onUse(cv.toDataURL("image/png"));
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50 p-4">
-      <div className="bg-white p-4 rounded-xl max-w-[95vw] w-[760px]">
+      <div className="bg-white p-4 rounded-xl w-full max-w-[760px]">
         <div className="flex justify-between mb-3">
-          <h2 className="text-lg font-semibold">Cắt ảnh</h2>
+          <h2 className="text-lg font-bold">Cắt ảnh</h2>
           <button onClick={onClose}>×</button>
         </div>
 
-        <div className="relative w-full h-[480px] bg-black rounded overflow-hidden">
-          <canvas ref={canvasRef} className="absolute w-full h-full" />
+        <div
+          ref={containerRef}
+          className="relative w-full h-[420px] bg-black overflow-hidden rounded"
+          onTouchStart={onStart}
+          onTouchMove={onMove}
+          onTouchEnd={onEnd}
+        >
+          <img ref={imgRef} src={imageUrl} className="w-full h-full object-contain" />
 
-          {/* Transparent overlay to catch touch events */}
+          {/* CROP BOX */}
           <div
-            ref={overlayRef}
-            className="absolute inset-0"
+            ref={boxRef}
             style={{
-              border: "2px solid transparent",
-              touchAction: "none",
+              position: "absolute",
+              border: "3px solid #4aa3ff",
+              left: box.x,
+              top: box.y,
+              width: box.size,
+              height: box.size,
             }}
-          >
-            {/* Crop box visual */}
-            <div
-              style={{
-                position: "absolute",
-                left: box.x,
-                top: box.y,
-                width: box.size,
-                height: box.size,
-                border: "3px solid #3b82f6",
-              }}
-            />
-          </div>
+          ></div>
         </div>
 
         <div className="flex justify-end gap-3 mt-4">
@@ -453,4 +320,3 @@ export default function Page() {
     </div>
   );
 }
-
