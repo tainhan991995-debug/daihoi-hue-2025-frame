@@ -230,30 +230,45 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [bmp, setBmp] = useState<ImageBitmap | null>(null);
+  const [bmp, setBmp] = useState<any>(null);
   const [box, setBox] = useState({ x: 200, y: 120, size: 300 });
 
-  const drag = useRef<any>({
-    mode: null,
-    start: { x: 0, y: 0 },
-    boxStart: null,
+  const drag = useRef({
+    mode: null as "move" | "resize" | null,
+    startX: 0,
+    startY: 0,
+    origX: 0,
+    origY: 0,
+    origSize: 0
   });
 
-  /* LOAD IMAGE */
+  /* LOAD IMAGE — fallback cho iOS */
   useEffect(() => {
     (async () => {
       const blob = await (await fetch(imageUrl)).blob();
-      const bitmap = await createImageBitmap(blob, { colorSpaceConversion: "none" });
+
+      let bitmap;
+      try {
+        bitmap = await createImageBitmap(blob);
+      } catch {
+        bitmap = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.src = URL.createObjectURL(blob);
+        });
+      }
+
       setBmp(bitmap);
     })();
   }, [imageUrl]);
 
-  /* DRAW ALL */
+  /* DRAW IMAGE + FRAME */
   const drawAll = () => {
     if (!bmp || !canvasRef.current) return;
 
     const cv = canvasRef.current;
     const ctx = cv.getContext("2d")!;
+
     cv.width = cv.clientWidth;
     cv.height = cv.clientHeight;
 
@@ -262,16 +277,17 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     const scale = Math.min(cv.width / bmp.width, cv.height / bmp.height);
     const drawW = bmp.width * scale;
     const drawH = bmp.height * scale;
+
     const dx = (cv.width - drawW) / 2;
     const dy = (cv.height - drawH) / 2;
 
-    (ctx as any).pos = { dx, dy, drawW, drawH, scale };
+    (ctx as any).pos = { dx, dy, scale };
+
     ctx.drawImage(bmp, dx, dy, drawW, drawH);
 
     drawOverlay();
   };
 
-  /* DRAW OVERLAY */
   const drawOverlay = () => {
     const ov = overlayRef.current;
     if (!ov) return;
@@ -288,126 +304,107 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     ctx.clearRect(box.x, box.y, box.size, box.size);
 
     ctx.strokeStyle = "#3b82f6";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.strokeRect(box.x, box.y, box.size, box.size);
   };
 
-  useEffect(() => drawAll(), [bmp, box]);
+  useEffect(drawAll, [bmp, box]);
 
-  /* DRAG EVENTS */
-  const onMouseDown = (e: any) => {
+  /* ======= UNIFIED TOUCH + MOUSE HANDLER ======= */
+
+  const getPoint = (e: any) => {
+    if (e.touches) e = e.touches[0];
     const rect = overlayRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
 
-    drag.current.start = { x, y };
-    drag.current.boxStart = { ...box };
+  const onDown = (e: any) => {
+    const { x, y } = getPoint(e);
 
-    if (Math.abs(x - (box.x + box.size)) < 20 && Math.abs(y - (box.y + box.size)) < 20) {
+    drag.current.startX = x;
+    drag.current.startY = y;
+    drag.current.origX = box.x;
+    drag.current.origY = box.y;
+    drag.current.origSize = box.size;
+
+    if (Math.abs(x - (box.x + box.size)) < 30 && Math.abs(y - (box.y + box.size)) < 30) {
       drag.current.mode = "resize";
     } else if (x > box.x && x < box.x + box.size && y > box.y && y < box.y + box.size) {
       drag.current.mode = "move";
-    } else drag.current.mode = null;
+    } else {
+      drag.current.mode = null;
+    }
   };
 
-  const onMouseMove = (e: any) => {
+  const onMove = (e: any) => {
     if (!drag.current.mode) return;
 
-    const rect = overlayRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const dx = x - drag.current.start.x;
-    const dy = y - drag.current.start.y;
+    const { x, y } = getPoint(e);
+    const dx = x - drag.current.startX;
+    const dy = y - drag.current.startY;
 
     if (drag.current.mode === "move") {
       setBox({
         ...box,
-        x: drag.current.boxStart.x + dx,
-        y: drag.current.boxStart.y + dy,
+        x: drag.current.origX + dx,
+        y: drag.current.origY + dy,
       });
     }
 
     if (drag.current.mode === "resize") {
-      const newSize = Math.max(80, drag.current.boxStart.size + dx);
+      const newSize = Math.max(100, drag.current.origSize + dx);
       setBox({ ...box, size: newSize });
     }
   };
 
-  const onMouseUp = () => (drag.current.mode = null);
+  const onUp = () => (drag.current.mode = null);
 
-/* CONFIRM CROP — TỐI ƯU CHO MOBILE */
-const confirmCrop = async () => {
-  const cv = canvasRef.current!;
-  const ctx = cv.getContext("2d") as any;
-  const pos = ctx.pos;
+  /* ===== CROP ===== */
+  const confirmCrop = async () => {
+    const cv = canvasRef.current!;
+    const pos = (cv.getContext("2d") as any).pos;
 
-  const relX = (box.x - pos.dx) / pos.scale;
-  const relY = (box.y - pos.dy) / pos.scale;
-  const relSize = box.size / pos.scale;
+    const relX = (box.x - pos.dx) / pos.scale;
+    const relY = (box.y - pos.dy) / pos.scale;
+    const relSize = box.size / pos.scale;
 
-  const off = new OffscreenCanvas(AVATAR_SIZE, AVATAR_SIZE);
-  const octx = off.getContext("2d")!;
-  octx.fillStyle = "#fff";
-  octx.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
+    const off = new OffscreenCanvas(450, 450); // avatar nhỏ -> nhẹ
+    const octx = off.getContext("2d")!;
 
-  octx.drawImage(
-    bmp!,
-    relX,
-    relY,
-    relSize,
-    relSize,
-    0,
-    0,
-    AVATAR_SIZE,
-    AVATAR_SIZE
-  );
+    octx.drawImage(bmp, relX, relY, relSize, relSize, 0, 0, 450, 450);
 
-  // NÉN ẢNH JPG CHO MOBILE
-  const compressedBlob = await off.convertToBlob({
-    type: "image/jpeg",
-    quality: 0.6
-  });
+    const blob = await off.convertToBlob({ type: "image/jpeg", quality: 0.7 });
 
-  const base64 = await new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.readAsDataURL(compressedBlob);
-  });
+    const url = await new Promise<string>((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.readAsDataURL(blob);
+    });
 
-  onUse(base64);
-};
+    onUse(url);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50">
-      <div className="bg-white p-4 rounded-xl w-[760px]">
-
-        <div className="flex justify-between mb-3">
-          <h2 className="text-lg font-semibold">Cắt ảnh</h2>
-          <button onClick={onClose}>×</button>
-        </div>
+      <div className="bg-white p-4 rounded-xl w-[90%] max-w-[760px]">
+        <h2 className="text-lg font-semibold mb-3">Cắt ảnh</h2>
 
         <div
-          className="relative w-full h-[480px] bg-black rounded overflow-hidden"
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
+          className="relative w-full h-[420px] bg-black rounded overflow-hidden"
+          onMouseDown={onDown}
+          onMouseMove={onMove}
+          onMouseUp={onUp}
+          onTouchStart={onDown}
+          onTouchMove={onMove}
+          onTouchEnd={onUp}
         >
           <canvas ref={canvasRef} className="absolute w-full h-full" />
-          <canvas
-            ref={overlayRef}
-            className="absolute w-full h-full"
-            onMouseDown={onMouseDown}
-          />
+          <canvas ref={overlayRef} className="absolute w-full h-full" />
         </div>
 
         <div className="flex justify-end gap-3 mt-4">
-          <button className="px-4 py-2 bg-gray-300 rounded" onClick={onClose}>
-            Hủy
-          </button>
-          <button
-            className="px-4 py-2 bg-blue-600 text-white rounded"
-            onClick={confirmCrop}
-          >
+          <button onClick={onClose}>Hủy</button>
+          <button onClick={confirmCrop} className="bg-blue-600 text-white px-4 py-2 rounded">
             Dùng ảnh này
           </button>
         </div>
