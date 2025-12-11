@@ -108,25 +108,13 @@ export default function Page() {
   };
 
   /* ====================== SEND TO GOOGLE SHEET ====================== */
-  const removeVietnamese = (str: string) =>
-  str
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .trim()
-    .replace(/\s+/g, " ");
-
 const sendToGoogleSheet = async (base64: string) => {
-  // tạo tên file tự động
+  console.log("⏳ Đang gọi API Google Sheet…");
+
   const cleanName = removeVietnamese(name || "khong-ten");
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/T/, "_")
-    .replace(/:/g, "-")
-    .replace(/\..+/, "");
-  
-  const filename = `${cleanName} - ${timestamp}.jpg`;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+  const filename = `${cleanName}-${timestamp}.jpg`;
 
   const payload = {
     name,
@@ -138,32 +126,43 @@ const sendToGoogleSheet = async (base64: string) => {
     userAgent: navigator.userAgent,
   };
 
+  console.log("📦 Payload gửi lên API:", payload);
+
   try {
     await fetch(SHEET_API, {
       method: "POST",
       mode: "no-cors",
-      body: JSON.stringify(payload), 
+      body: JSON.stringify(payload),
     });
+
+    console.log("✅ Gửi thành công (no-cors, không có response).");
   } catch (err) {
-    console.error("Send error:", err);
+    console.error("❌ Lỗi khi gửi API:", err);
   }
 };
 
+const downloadImage = () => {
+  console.log("📸 Bắt đầu xuất ảnh…");
 
-  /* ====================== DOWNLOAD IMAGE ====================== */
-  const downloadImage = () => {
   const canvas = canvasRef.current;
-  if (!canvas) return;
+  if (!canvas) {
+    console.log("❌ Không tìm thấy canvas.");
+    return;
+  }
 
-  // Xuất JPEG chất lượng 0.7 để load nhanh
   const base64 = canvas.toDataURL("image/jpeg", 0.7);
+
+  console.log("🖼 Base64 length:", base64.length);
 
   sendToGoogleSheet(base64);
 
+  // Tải ảnh xuống máy
   const a = document.createElement("a");
   a.href = base64;
   a.download = `${removeVietnamese(name || "loi-nhan")}.jpg`;
   a.click();
+
+  console.log("⬇ Đã tải hình về máy.");
 };
 
 
