@@ -108,11 +108,33 @@ export default function Page() {
   };
 
   /* ====================== SEND TO GOOGLE SHEET ====================== */
-  const sendToSheet = async (base64Image: string) => {
+  const removeVietnamese = (str: string) =>
+  str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .trim()
+    .replace(/\s+/g, " ");
+
+const sendToGoogleSheet = async (base64: string) => {
+  // tạo tên file tự động
+  const cleanName = removeVietnamese(name || "khong-ten");
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/T/, "_")
+    .replace(/:/g, "-")
+    .replace(/\..+/, "");
+  
+  const filename = `${cleanName} - ${timestamp}.jpg`;
+
   const payload = {
     name,
     roleUnit,
-    base64Image,
+    message,
+    base64,
+    filename,
+    mimeType: "image/jpeg",
     userAgent: navigator.userAgent,
   };
 
@@ -120,28 +142,30 @@ export default function Page() {
     await fetch(SHEET_API, {
       method: "POST",
       mode: "no-cors",
-      body: JSON.stringify(payload), // 🚀 Quan trọng: KHÔNG ĐƯỢC đặt headers
+      body: JSON.stringify(payload), 
     });
   } catch (err) {
-    console.error("Sheet error:", err);
+    console.error("Send error:", err);
   }
 };
 
 
   /* ====================== DOWNLOAD IMAGE ====================== */
   const downloadImage = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const canvas = canvasRef.current;
+  if (!canvas) return;
 
-    const base64 = canvas.toDataURL("image/png");
+  // Xuất JPEG chất lượng 0.7 để load nhanh
+  const base64 = canvas.toDataURL("image/jpeg", 0.7);
 
-    sendToSheet(base64);
+  sendToGoogleSheet(base64);
 
-    const a = document.createElement("a");
-    a.href = base64;
-    a.download = "loi-nhan.png";
-    a.click();
-  };
+  const a = document.createElement("a");
+  a.href = base64;
+  a.download = `${removeVietnamese(name || "loi-nhan")}.jpg`;
+  a.click();
+};
+
 
   /* ====================== RENDER ====================== */
   return (
