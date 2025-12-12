@@ -8,7 +8,9 @@ import { drawAvatar } from "@/components/canvas/drawAvatar";
 import { drawTexts } from "@/components/canvas/drawTexts";
 import { drawWatermark } from "@/components/canvas/drawLogos";
 
-/* ====================== CONFIG ====================== */
+/* -------------------------------
+    CONSTANTS / CONFIG
+-------------------------------- */
 const FRAME_WIDTH = 7550;
 const FRAME_HEIGHT = 3980;
 
@@ -32,11 +34,25 @@ const CONFIG = {
   TEXT_LINE_HEIGHT: 190,
 };
 
-const SHEET_API =
-  "https://script.google.com/macros/s/AKfycbwvBMlNmyhF--o2qExYGrVEypJ8hTvP3ASgP_7o0E5wxZBCtqmTkk7pZE6_zbbCDByB/exec";
+const APPS_SCRIPT_URL =
+  "https://script.google.com/macros/s/AKfycbwTvZqv_QfcWI1v252yqSiUwF7zcqcLKFsvFY6CXjiVydvkk9dPiBu2AV-Cwp4Wl8P4/exec";
 
-/* ====================== COMPONENT ====================== */
+/* -------------------------------
+    HELPER
+-------------------------------- */
+function removeVietnamese(str: string) {
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .replace(/[^a-zA-Z0-9-_ ]/g, "")
+    .replace(/ /g, "_");
+}
 
+/* ==========================================================
+    MAIN PAGE
+========================================================== */
 export default function Page() {
   const [rawImageURL, setRawImageURL] = useState<string | null>(null);
   const [showCropper, setShowCropper] = useState(false);
@@ -48,137 +64,108 @@ export default function Page() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  /* ====================== RENDER FRAME + TEXT ====================== */
+  /* ------------------------ RENDER CANVAS ------------------------ */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     canvas.width = FRAME_WIDTH;
     canvas.height = FRAME_HEIGHT;
 
-    const frame = new Image();
-    frame.src = "/frame1.png";
+    const frameImg = new Image();
+    frameImg.src = "/frame1.png";
 
-    frame.onload = () => {
+    frameImg.onload = () => {
       ctx.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-      ctx.drawImage(frame, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+      ctx.drawImage(frameImg, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
 
-      const drawContent = () => {
-        drawTexts(ctx, name, roleUnit, message, CONFIG);
-
-        drawWatermark(
-          ctx,
-          "ĐẠI HỘI ĐOÀN TNCS HỒ CHÍ MINH TP HUẾ 2025",
-          7350,
-          3920
-        );
-      };
-
+      // Draw avatar if available
       if (croppedImage) {
         const avatar = new Image();
         avatar.src = croppedImage;
-
         avatar.onload = () => {
           drawAvatar(ctx, avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE);
-          drawContent();
+          drawFinalTexts();
         };
       } else {
-        drawContent();
+        drawFinalTexts();
       }
     };
+
+    function drawFinalTexts() {
+      drawTexts(ctx, name, roleUnit, message, CONFIG);
+      drawWatermark(
+        ctx,
+        "ĐẠI HỘI ĐOÀN TNCS HỒ CHÍ MINH TP HUẾ 2025",
+        7350,
+        3920
+      );
+    }
   }, [croppedImage, name, roleUnit, message]);
 
-  /* ====================== FILE PICKER ====================== */
-  const chooseFile = () => {
+  /* -------------------------- FILE PICKER ------------------------- */
+  const chooseFile = () =>
     document.getElementById("fileInput")?.click();
-  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
 
-    await createImageBitmap(f); // validate file ok
     const url = URL.createObjectURL(f);
-
     setRawImageURL(url);
     setShowCropper(true);
   };
 
-  /* ====================== SEND TO GOOGLE SHEET ====================== */
-const sendToGoogleSheet = async (base64: string) => {
-  console.log("⏳ Đang gọi API Google Sheet…");
+  /* -------------------------- DOWNLOAD + SEND ------------------------- */
 
-  const cleanName = removeVietnamese(name || "khong-ten");
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const sendToDrive = async (base64: string) => {
+    const cleanName = removeVietnamese(name || "nguoi-dung");
+    const filename = `${cleanName}-${Date.now()}.jpg`;
 
-  const filename = `${cleanName}-${timestamp}.jpg`;
+    const payload = {
+      base64,
+      filename,
+      mimeType: "image/jpeg"
+    };
 
-  const payload = {
-    name,
-    roleUnit,
-    message,
-    base64,
-    filename,
-    mimeType: "image/jpeg",
-    userAgent: navigator.userAgent,
-  };
-
-  console.log("📦 Payload gửi lên API:", payload);
-
-  try {
-    await fetch(SHEET_API, {
+    // MUST USE no-cors for Apps Script (CORS limitations)
+    await fetch(APPS_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
       body: JSON.stringify(payload),
     });
+  };
 
-    console.log("✅ Gửi thành công (no-cors, không có response).");
-  } catch (err) {
-    console.error("❌ Lỗi khi gửi API:", err);
-  }
-};
+  const downloadImage = (base64: string) => {
+    const cleanName = removeVietnamese(name || "loi_nhan");
+    const a = document.createElement("a");
+    a.href = base64;
+    a.download = `${cleanName}.jpg`;
+    a.click();
+  };
 
-const downloadImage = () => {
-  console.log("📸 Bắt đầu xuất ảnh…");
+  const handleDownload = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-  const canvas = canvasRef.current;
-  if (!canvas) {
-    console.log("❌ Không tìm thấy canvas.");
-    return;
-  }
+    // Export JPEG (smaller file size)
+    const base64 = canvas.toDataURL("image/jpeg", 0.85);
 
-  const base64 = canvas.toDataURL("image/jpeg", 0.7);
+    await sendToDrive(base64);   // gửi lên Drive
+    downloadImage(base64);       // tải về máy
+  };
 
-  console.log("🖼 Base64 length:", base64.length);
+  /* -------------------------- RENDER UI ------------------------- */
 
-  sendToGoogleSheet(base64);
-
-  // Tải ảnh xuống máy
-  const a = document.createElement("a");
-  a.href = base64;
-  a.download = `${removeVietnamese(name || "loi-nhan")}.jpg`;
-  a.click();
-
-  console.log("⬇ Đã tải hình về máy.");
-};
-
-
-  /* ====================== RENDER ====================== */
   return (
-  <div
-    className="min-h-screen p-10 flex flex-col items-center bg-cover bg-center"
-    style={{
-      backgroundImage: `url("/khung.png")`,
-    }}
-  >
+<div className="min-h-screen p-10 flex flex-col items-center bg-cover bg-center" style={{ backgroundImage: `url("/khung.png")` }} >
       <img src="/center-logo.png" className="w-[820px] mb-10" />
 
       <div className="max-w-[1800px] w-full grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-10">
-        
-        {/* LEFT PANEL */}
+
+        {/* LEFT SIDE */}
         <div className="bg-white p-10 rounded-2xl shadow-xl">
           <input
             id="fileInput"
@@ -222,7 +209,7 @@ const downloadImage = () => {
             {message.length}/500
           </div>
 
-          <button onClick={downloadImage} className="btn-primary mt-6">
+          <button onClick={handleDownload} className="btn-primary mt-6">
             Tải lời nhắn về
           </button>
         </div>
@@ -237,7 +224,7 @@ const downloadImage = () => {
         </div>
       </div>
 
-      {/* MODAL CROP */}
+      {/* CROP MODAL */}
       {showCropper && rawImageURL && (
         <CropModal
           imageUrl={rawImageURL}
@@ -255,9 +242,10 @@ const downloadImage = () => {
   );
 }
 
-/* ============================================================
-                    CROP MODAL (DESKTOP)
-   ============================================================ */
+/* ==========================================================
+    DESKTOP CROP MODAL
+========================================================== */
+
 function CropModal({ imageUrl, onClose, onUse }: any) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
@@ -289,13 +277,13 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     ctx.clearRect(0, 0, cv.width, cv.height);
 
     const scale = Math.min(cv.width / bmp.width, cv.height / bmp.height);
-    const drawW = bmp.width * scale;
-    const drawH = bmp.height * scale;
-    const dx = (cv.width - drawW) / 2;
-    const dy = (cv.height - drawH) / 2;
+    const w = bmp.width * scale;
+    const h = bmp.height * scale;
+    const dx = (cv.width - w) / 2;
+    const dy = (cv.height - h) / 2;
 
-    (ctx as any).pos = { dx, dy, drawW, drawH, scale };
-    ctx.drawImage(bmp, dx, dy, drawW, drawH);
+    (ctx as any).pos = { dx, dy, w, h, scale };
+    ctx.drawImage(bmp, dx, dy, w, h);
 
     drawOverlay();
   };
@@ -309,6 +297,7 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     ov.height = ov.clientHeight;
 
     ctx.clearRect(0, 0, ov.width, ov.height);
+
     ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.fillRect(0, 0, ov.width, ov.height);
 
@@ -352,26 +341,24 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
     const y = e.clientY - rect.top;
 
     const dx = x - drag.current.start.x;
+    const dy = y - drag.current.start.y;
 
     if (drag.current.mode === "move") {
       setBox({
         ...box,
         x: drag.current.boxStart.x + dx,
-        y: drag.current.boxStart.y + (y - drag.current.start.y),
+        y: drag.current.boxStart.y + dy,
       });
     }
 
     if (drag.current.mode === "resize") {
-      setBox({
-        ...box,
-        size: Math.max(80, drag.current.boxStart.size + dx),
-      });
+      const newSize = Math.max(100, drag.current.boxStart.size + dx);
+      setBox({ ...box, size: newSize });
     }
   };
 
   const onMouseUp = () => (drag.current.mode = null);
 
-  /* ====================== CONFIRM CROP ====================== */
   const confirmCrop = async () => {
     const cv = canvasRef.current!;
     const ctx = cv.getContext("2d") as any;
@@ -398,20 +385,17 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
       AVATAR_SIZE
     );
 
-    const blob = await out.convertToBlob({ type: "image/png" });
+    const blob = await out.convertToBlob({ type: "image/jpeg", quality: 0.9 });
 
-    const base64 = await new Promise<string>((resolve) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result as string);
-      r.readAsDataURL(blob);
-    });
-
-    onUse(base64);
+    const reader = new FileReader();
+    reader.onload = () => onUse(reader.result as string);
+    reader.readAsDataURL(blob);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50 p-4">
-      <div className="bg-white p-4 rounded-xl max-w-[95vw] w-[760px]">
+    <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50">
+      <div className="bg-white p-4 rounded-xl w-[760px]">
+
         <div className="flex justify-between mb-3">
           <h2 className="text-lg font-semibold">Cắt ảnh</h2>
           <button onClick={onClose}>×</button>
