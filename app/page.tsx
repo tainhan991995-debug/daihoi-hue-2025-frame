@@ -158,24 +158,25 @@ const sendToDrive = async (blob: Blob) => {
   const cleanName = removeVietnamese(name || "nguoi-dung");
   const filename = `${cleanName}-${Date.now()}.jpg`;
 
-  // Convert blob → base64 để gửi lên Apps Script
   const reader = new FileReader();
   reader.onloadend = async () => {
-    const base64 = (reader.result as string).split(",")[1]; // bỏ đầu chuỗi
+    // KHÔNG split base64 nữa → mobile mới gửi đúng
+    const base64Full = reader.result as string;
+
     const payload = {
-      base64,
+      base64: base64Full,
       filename,
       mimeType: "image/jpeg",
     };
 
     await fetch(APPS_SCRIPT_URL, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify(payload),
-});
-
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  };
 
   reader.readAsDataURL(blob);
 };
