@@ -116,15 +116,19 @@ export default function Page() {
     setShowCropper(true);
   };
 
-  /* -------------------------- DOWNLOAD + SEND ------------------------- */
-  const sendToDrive = async (base64: string) => {
-    const cleanName = removeVietnamese(name || "nguoi-dung");
-    const filename = `${cleanName}-${Date.now()}.jpg`;
+  /* -------------------------- DOWNLOAD + SEND (FAST) ------------------------- */
+const sendToDrive = async (blob: Blob) => {
+  const cleanName = removeVietnamese(name || "nguoi-dung");
+  const filename = `${cleanName}-${Date.now()}.jpg`;
 
+  // Convert blob → base64 để gửi lên Apps Script
+  const reader = new FileReader();
+  reader.onloadend = async () => {
+    const base64 = (reader.result as string).split(",")[1]; // bỏ đầu chuỗi
     const payload = {
       base64,
       filename,
-      mimeType: "image/jpeg"
+      mimeType: "image/jpeg",
     };
 
     await fetch(APPS_SCRIPT_URL, {
@@ -134,23 +138,37 @@ export default function Page() {
     });
   };
 
-  const downloadImage = (base64: string) => {
-    const cleanName = removeVietnamese(name || "loi_nhan");
-    const a = document.createElement("a");
-    a.href = base64;
-    a.download = `${cleanName}.jpg`;
-    a.click();
-  };
+  reader.readAsDataURL(blob);
+};
 
-  const handleDownload = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+const downloadBlob = (blob: Blob) => {
+  const cleanName = removeVietnamese(name || "loi_nhan");
+  const url = URL.createObjectURL(blob);
 
-    const base64 = canvas.toDataURL("image/jpeg", 0.5); // nhẹ hơn
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${cleanName}.jpg`;
+  a.click();
 
-    await sendToDrive(base64);
-    downloadImage(base64);
-  };
+  URL.revokeObjectURL(url);
+};
+
+const handleDownload = async () => {
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+
+  // toBlob → nhanh hơn toDataURL nhiều lần
+  canvas.toBlob(async (blob) => {
+    if (!blob) return;
+
+    // 1) TẢI ẢNH NGAY – không chờ gửi
+    downloadBlob(blob);
+
+    // 2) Gửi lên Drive chạy nền, không ảnh hưởng tốc độ tải
+    sendToDrive(blob);
+  }, "image/jpeg", 0.5);
+};
+
 
   /* -------------------------- RENDER UI ------------------------- */
 
