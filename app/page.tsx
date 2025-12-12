@@ -44,20 +44,25 @@ const isMobile = () =>
   typeof window !== "undefined" && window.innerWidth < 768;
 
 async function autoCropMobile(file: File) {
-  const bitmap = await createImageBitmap(file);
+  return new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const minSide = Math.min(img.width, img.height);
+      const sx = (img.width - minSide) / 2;
+      const sy = (img.height - minSide) / 2;
 
-  const minSide = Math.min(bitmap.width, bitmap.height);
-  const sx = (bitmap.width - minSide) / 2;
-  const sy = (bitmap.height - minSide) / 2;
+      const cv = document.createElement("canvas");
+      cv.width = AVATAR_SIZE;
+      cv.height = AVATAR_SIZE;
 
-  const cv = document.createElement("canvas");
-  cv.width = AVATAR_SIZE;
-  cv.height = AVATAR_SIZE;
+      const ctx = cv.getContext("2d")!;
+      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
 
-  const ctx = cv.getContext("2d")!;
-  ctx.drawImage(bitmap, sx, sy, minSide, minSide, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      resolve(cv.toDataURL("image/jpeg", 0.9));
+    };
 
-  return cv.toDataURL("image/jpeg", 0.9);
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 /* -------------------------------
