@@ -56,7 +56,17 @@ async function autoCropMobile(file: File) {
       cv.height = AVATAR_SIZE;
 
       const ctx = cv.getContext("2d")!;
-      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      ctx.drawImage(
+        img,
+        sx,
+        sy,
+        minSide,
+        minSide,
+        0,
+        0,
+        AVATAR_SIZE,
+        AVATAR_SIZE
+      );
 
       resolve(cv.toDataURL("image/jpeg", 0.9));
     };
@@ -97,7 +107,7 @@ export default function Page() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
-    
+
     canvas.width = FRAME_WIDTH;
     canvas.height = FRAME_HEIGHT;
 
@@ -136,89 +146,80 @@ export default function Page() {
     document.getElementById("fileInput")?.click();
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const f = e.target.files?.[0];
-  if (!f) return;
+    const f = e.target.files?.[0];
+    if (!f) return;
 
-  // 👉 MOBILE: auto-crop, không mở CropModal
-  if (isMobile()) {
-    const croppedBase64 = await autoCropMobile(f);
-    setCroppedImage(croppedBase64);
-    return;
-  }
+    if (isMobile()) {
+      const croppedBase64 = await autoCropMobile(f);
+      setCroppedImage(croppedBase64);
+      return;
+    }
 
-  // 👉 DESKTOP: mở CropModal
-  const url = URL.createObjectURL(f);
-  setRawImageURL(url);
-  setShowCropper(true);
-};
-
-
-  /* -------------------------- DOWNLOAD + SEND (FAST) ------------------------- */
-const sendToDrive = async (blob: Blob) => {
-  const cleanName = removeVietnamese(name || "nguoi-dung");
-  const filename = `${cleanName}-${Date.now()}.jpg`;
-
-  const reader = new FileReader();
-  reader.onloadend = async () => {
-    // KHÔNG split base64 nữa → mobile mới gửi đúng
-    const base64Full = reader.result as string;
-
-    const payload = {
-      base64: base64Full,
-      filename,
-      mimeType: "image/jpeg",
-    };
-
-    await fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+    const url = URL.createObjectURL(f);
+    setRawImageURL(url);
+    setShowCropper(true);
   };
 
-  reader.readAsDataURL(blob);
-};
+  /* -------------------------- DOWNLOAD + SEND (FAST) ------------------------- */
+  const sendToDrive = async (blob: Blob) => {
+    const cleanName = removeVietnamese(name || "nguoi-dung");
+    const filename = `${cleanName}-${Date.now()}.jpg`;
 
-const downloadBlob = (blob: Blob) => {
-  const cleanName = removeVietnamese(name || "loi_nhan");
-  const url = URL.createObjectURL(blob);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Full = reader.result as string;
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${cleanName}.jpg`;
-  a.click();
+      const payload = {
+        base64: base64Full,
+        filename,
+        mimeType: "image/jpeg",
+      };
 
-  URL.revokeObjectURL(url);
-};
+      await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    };
 
-const handleDownload = async () => {
-  const canvas = canvasRef.current;
-  if (!canvas) return;
+    reader.readAsDataURL(blob);
+  };
 
-  // toBlob → nhanh hơn toDataURL nhiều lần
-  canvas.toBlob(async (blob) => {
-    if (!blob) return;
+  const downloadBlob = (blob: Blob) => {
+    const cleanName = removeVietnamese(name || "loi_nhan");
+    const url = URL.createObjectURL(blob);
 
-    // 1) TẢI ẢNH NGAY – không chờ gửi
-    downloadBlob(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${cleanName}.jpg`;
+    a.click();
 
-    // 2) Gửi lên Drive chạy nền, không ảnh hưởng tốc độ tải
-    sendToDrive(blob);
-  }, "image/jpeg", 0.5);
-};
+    URL.revokeObjectURL(url);
+  };
 
+  const handleDownload = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+
+      downloadBlob(blob);
+      sendToDrive(blob);
+    }, "image/jpeg", 0.5);
+  };
 
   /* -------------------------- RENDER UI ------------------------- */
-
   return (
-<div className="min-h-screen p-10 flex flex-col items-center bg-cover bg-center" style={{ backgroundImage: `url("/khung.png")` }} >
+    <div
+      className="min-h-screen p-10 flex flex-col items-center bg-cover bg-center"
+      style={{ backgroundImage: `url("/khung.png")` }}
+    >
       <img src="/center-logo.png" className="w-[820px] mb-10" />
 
       <div className="max-w-[1800px] w-full grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-10">
-
-        {/* LEFT SIDE */}
         <div className="bg-white p-10 rounded-2xl shadow-xl">
           <input
             id="fileInput"
@@ -235,27 +236,27 @@ const handleDownload = async () => {
           <div className="label-box">Họ và tên</div>
           <input
             className="form-input"
-            placeholder="Nhập họ và tên…"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            placeholder="Nhập họ và tên…"
           />
 
           <div className="label-box mt-4">Chức vụ - Đơn vị</div>
           <input
             className="form-input"
-            placeholder="Nhập chức vụ - đơn vị…"
             value={roleUnit}
             onChange={(e) => setRoleUnit(e.target.value)}
+            placeholder="Nhập chức vụ - đơn vị…"
           />
 
           <div className="label-box mt-4">Gửi lời nhắn</div>
           <textarea
             className="form-input"
-            placeholder="Nhập lời nhắn…"
-            maxLength={500}
-            rows={6}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            maxLength={500}
+            rows={6}
+            placeholder="Nhập lời nhắn…"
           />
 
           <div className="text-right text-gray-500 text-sm">
@@ -267,7 +268,6 @@ const handleDownload = async () => {
           </button>
         </div>
 
-        {/* CANVAS */}
         <div className="flex justify-center">
           <canvas
             ref={canvasRef}
@@ -277,7 +277,6 @@ const handleDownload = async () => {
         </div>
       </div>
 
-      {/* CROP MODAL */}
       {showCropper && rawImageURL && (
         <CropModal
           imageUrl={rawImageURL}
@@ -298,7 +297,6 @@ const handleDownload = async () => {
 /* ==========================================================
     DESKTOP CROP MODAL
 ========================================================== */
-
 function CropModal({ imageUrl, onClose, onUse }: any) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
@@ -438,7 +436,10 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
       AVATAR_SIZE
     );
 
-    const blob = await out.convertToBlob({ type: "image/jpeg", quality: 0.9 });
+    const blob = await out.convertToBlob({
+      type: "image/jpeg",
+      quality: 0.9,
+    });
 
     const reader = new FileReader();
     reader.onload = () => onUse(reader.result as string);
@@ -448,7 +449,6 @@ function CropModal({ imageUrl, onClose, onUse }: any) {
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50">
       <div className="bg-white p-4 rounded-xl w-[760px]">
-
         <div className="flex justify-between mb-3">
           <h2 className="text-lg font-semibold">Cắt ảnh</h2>
           <button onClick={onClose}>×</button>
