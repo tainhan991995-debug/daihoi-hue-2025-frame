@@ -68,9 +68,8 @@ export default function Page() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
+    const ctx = canvas.getContext("2d")!;
+    
     canvas.width = FRAME_WIDTH;
     canvas.height = FRAME_HEIGHT;
 
@@ -81,23 +80,22 @@ export default function Page() {
       ctx.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
       ctx.drawImage(frameImg, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
 
-      // Draw avatar if available
       if (croppedImage) {
         const avatar = new Image();
         avatar.src = croppedImage;
         avatar.onload = () => {
-          drawAvatar(ctx, avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE);
-          drawFinalTexts();
+          drawAvatar(ctx!, avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE);
+          drawFinalTexts(ctx!);
         };
       } else {
-        drawFinalTexts();
+        drawFinalTexts(ctx!);
       }
     };
 
-    function drawFinalTexts() {
-      drawTexts(ctx, name, roleUnit, message, CONFIG);
+    function drawFinalTexts(ctx: CanvasRenderingContext2D) {
+      drawTexts(ctx!, name, roleUnit, message, CONFIG);
       drawWatermark(
-        ctx,
+        ctx!,
         "ĐẠI HỘI ĐOÀN TNCS HỒ CHÍ MINH TP HUẾ 2025",
         7350,
         3920
@@ -119,7 +117,6 @@ export default function Page() {
   };
 
   /* -------------------------- DOWNLOAD + SEND ------------------------- */
-
   const sendToDrive = async (base64: string) => {
     const cleanName = removeVietnamese(name || "nguoi-dung");
     const filename = `${cleanName}-${Date.now()}.jpg`;
@@ -130,7 +127,6 @@ export default function Page() {
       mimeType: "image/jpeg"
     };
 
-    // MUST USE no-cors for Apps Script (CORS limitations)
     await fetch(APPS_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
@@ -150,11 +146,10 @@ export default function Page() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Export JPEG (smaller file size)
-    const base64 = canvas.toDataURL("image/jpeg", 0.85);
+    const base64 = canvas.toDataURL("image/jpeg", 0.5); // nhẹ hơn
 
-    await sendToDrive(base64);   // gửi lên Drive
-    downloadImage(base64);       // tải về máy
+    await sendToDrive(base64);
+    downloadImage(base64);
   };
 
   /* -------------------------- RENDER UI ------------------------- */
