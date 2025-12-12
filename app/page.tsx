@@ -38,6 +38,29 @@ const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbwTvZqv_QfcWI1v252yqSiUwF7zcqcLKFsvFY6CXjiVydvkk9dPiBu2AV-Cwp4Wl8P4/exec";
 
 /* -------------------------------
+    MOBILE AUTO CROP
+-------------------------------- */
+const isMobile = () =>
+  typeof window !== "undefined" && window.innerWidth < 768;
+
+async function autoCropMobile(file: File) {
+  const bitmap = await createImageBitmap(file);
+
+  const minSide = Math.min(bitmap.width, bitmap.height);
+  const sx = (bitmap.width - minSide) / 2;
+  const sy = (bitmap.height - minSide) / 2;
+
+  const cv = document.createElement("canvas");
+  cv.width = AVATAR_SIZE;
+  cv.height = AVATAR_SIZE;
+
+  const ctx = cv.getContext("2d")!;
+  ctx.drawImage(bitmap, sx, sy, minSide, minSide, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+
+  return cv.toDataURL("image/jpeg", 0.9);
+}
+
+/* -------------------------------
     HELPER
 -------------------------------- */
 function removeVietnamese(str: string) {
@@ -108,13 +131,22 @@ export default function Page() {
     document.getElementById("fileInput")?.click();
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  const f = e.target.files?.[0];
+  if (!f) return;
 
-    const url = URL.createObjectURL(f);
-    setRawImageURL(url);
-    setShowCropper(true);
-  };
+  // 👉 MOBILE: auto-crop, không mở CropModal
+  if (isMobile()) {
+    const croppedBase64 = await autoCropMobile(f);
+    setCroppedImage(croppedBase64);
+    return;
+  }
+
+  // 👉 DESKTOP: mở CropModal
+  const url = URL.createObjectURL(f);
+  setRawImageURL(url);
+  setShowCropper(true);
+};
+
 
   /* -------------------------- DOWNLOAD + SEND (FAST) ------------------------- */
 const sendToDrive = async (blob: Blob) => {
