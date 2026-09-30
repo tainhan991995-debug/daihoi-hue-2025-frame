@@ -58,5 +58,5 @@ function drawInBox(ctx: CanvasRenderingContext2D, text: string, box: TextBox, ma
 export function drawTexts(ctx: CanvasRenderingContext2D, name: string, roleUnit: string, message: string, config: TextLayout) {
   drawInBox(ctx, name.toUpperCase(), config.name, 160, "bold", "#ffffff", true, true);
   drawInBox(ctx, roleUnit, config.unit, 95, "bold", "#ffffff", true);
-  drawInBox(ctx, message, config.message, 150, "italic bold", "#0755a6", false);
+  drawInBox(ctx, message, config.message, 150, "italic bold", "#08427B", false);
 }
