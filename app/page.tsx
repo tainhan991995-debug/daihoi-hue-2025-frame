@@ -170,7 +170,7 @@ export default function Page() {
       form.append("name", pending.name);
       form.append("roleUnit", pending.roleUnit);
       form.append("message", pending.message);
-      const response = await fetch("/api/download", { method: "POST", body: form, signal: AbortSignal.timeout(55000) });
+      const response = await fetch("/api/download", { method: "POST", body: form, signal: AbortSignal.timeout(50) });
       const result = await response.json();
       if (!response.ok || result.ok !== true) throw new Error(result.error || "Chưa lưu được ảnh.");
 
@@ -234,10 +234,12 @@ export default function Page() {
           <input className="form-input" maxLength={300} placeholder="Nhập chức vụ - đơn vị…" value={roleUnit} onChange={(e) => setRoleUnit(e.target.value)} />
 
           <div className="label-box mt-4">Gửi lời nhắn</div>
-          <textarea className="form-input" placeholder="Nhập lời nhắn…" maxLength={500} rows={6} 
+          {/* Sửa maxLength={500} thành maxLength={800} */}
+          <textarea className="form-input" placeholder="Nhập lời nhắn…" maxLength={800} rows={6} 
                     value={message} onChange={(e) => setMessage(e.target.value)} />
 
-          <div className="text-right text-gray-500 text-sm">{message.length}/500</div>
+          {/* Sửa hiển thị số đếm từ /500 thành /800 */}
+          <div className="text-right text-gray-500 text-sm">{message.length}/800</div>
 
           <button onClick={handleDownload} disabled={saving} className="btn-primary mt-6 disabled:opacity-50">
             {saving ? "Đang lưu…" : "Tải lời nhắn về"}
