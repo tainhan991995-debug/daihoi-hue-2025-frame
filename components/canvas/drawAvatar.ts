@@ -2,24 +2,31 @@ export function drawAvatar(ctx: CanvasRenderingContext2D, img: HTMLImageElement,
   const scale = Math.max(width / img.width, height / img.height);
   const sw = width / scale, sh = height / scale;
   
+  // Lưu trạng thái trước khi cắt
   ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(x, y, width, height, 80); // 80 là độ bo góc hiện tại
   
-  ctx.clip(); // Cắt khung hình thành chữ nhật bo góc
+  // 1. Tạo hình chữ nhật bo góc để cắt ảnh
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, 80); // Độ bo góc 80
+  ctx.clip(); // Bắt đầu cắt
+  
+  // 2. Vẽ ảnh vào bên trong
   ctx.drawImage(img, (img.width-sw)/2, (img.height-sh)/2, sw, sh, x, y, width, height);
   
-  // --- THÊM VIỀN TẠI ĐÂY ---
-  // Lưu ý: Vì đã dùng lệnh clip() ở trên nên phần viền tràn ra ngoài sẽ bị cắt đi một nửa. 
-  // Do đó, nếu bạn muốn viền dày 15px, hãy nhập số 30.
-  ctx.lineWidth = 30; 
-  
-  // Bạn có thể đổi màu viền ở đây. 
-  // "#F26522" là màu cam (giống ô bạn khoanh). 
-  // Nếu muốn màu xanh dương cho hợp với màu ruy-băng bên dưới, hãy đổi thành "#0D62B8".
-  ctx.strokeStyle = "#F26522"; 
-  ctx.stroke();
-  // -------------------------
-
+  // 3. Phục hồi trạng thái (Thoát khỏi lệnh cắt clip)
+  // Bước này rất quan trọng để viền không bị cắt đi một nửa, giúp nó tràn ra ngoài lấp màu trắng.
   ctx.restore();
+  
+  // 4. Vẽ viền bo đè lên mép ảnh và mép khung trắng
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, 80);
+  
+  // Tăng độ dày lên để lấp kín khoảng trắng (bạn có thể tăng lên 60, 80 nếu khoảng trắng vẫn còn)
+  ctx.lineWidth = 50; 
+  
+  // Mã màu xanh dương tiệp với màu bo của khung. 
+  // (Nếu thích màu xanh đậm hơn giống nền web, bạn đổi thành "#0782C5")
+  ctx.strokeStyle = "#38A1F3"; 
+  
+  ctx.stroke();
 }
